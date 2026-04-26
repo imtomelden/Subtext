@@ -1,0 +1,3 @@
+{"hypothesisId":"H1_repo_or_permissions","message":"startDev called","runId":"pre-fix","timestamp":1777120575821,"sessionId":"196ae1","location":"BuildService.startDev","data":{"repoRoot":"\/Users\/tomblagden\/Documents\/Projects\/Website\/","hasUserSelectedRoot":"true"}}
+{"hypothesisId":"H2_preflight_blocks_start","message":"preflight completed","runId":"pre-fix","timestamp":1777120575827,"sessionId":"196ae1","location":"BuildService.startDev","data":{"issueCount":"0"}}
+{"hypothesisId":"H4_launches_then_exits","message":"launching process","runId":"pre-fix","timestamp":1777120575827,"sessionId":"196ae1","location":"BuildService.startDev","data":{"command":"\/usr\/bin\/env npm run dev","cwd":"\/Users\/tomblagden\/Documents\/Projects\/Website\/"}}

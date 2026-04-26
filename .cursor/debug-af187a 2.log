@@ -1,0 +1,6 @@
+{"runId":"pre-fix","message":"start() entered","timestamp":1776923112447,"sessionId":"af187a","hypothesisId":"H1","data":{"status":"stopped","hasUserSelectedRoot":"true","repoLeaf":"Website"},"location":"DevServerController.swift:start"}
+{"runId":"pre-fix","message":"about to launch npm run dev","timestamp":1776923112458,"sessionId":"af187a","hypothesisId":"H2","data":{"cwd":"\/Users\/tomblagden\/Documents\/Projects\/Website\/","pathLength":"62","pathHasUsrLocalBin":"true","pathHasHomebrew":"true"},"location":"BuildService.swift:startDev"}
+{"runId":"pre-fix","message":"proc.run ok","timestamp":1776923112463,"sessionId":"af187a","hypothesisId":"H2","data":{"pid":"62632"},"location":"BuildService.swift:startDev"}
+{"runId":"pre-fix","message":"after startDev","timestamp":1776923112464,"sessionId":"af187a","hypothesisId":"H3","data":{"currentPID":"62632"},"location":"DevServerController.swift:start task"}
+{"location":"DevServerController.swift:start","sessionId":"af187a","data":{"status":"stopped","repoLeaf":"Website","hasUserSelectedRoot":"true"},"hypothesisId":"H1","message":"start() entered","runId":"pre-fix","timestamp":1776923119622}
+{"runId":"pre-fix","message":"startDev threw","timestamp":1776923119639,"sessionId":"af187a","hypothesisId":"H4","data":{"error":"Dev server is already running."},"location":"DevServerController.swift:start task"}

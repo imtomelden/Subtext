@@ -1,0 +1,86 @@
+name: Subtext
+options:
+  bundleIdPrefix: com.tomelden
+  deploymentTarget:
+    macOS: "26.0"
+  createIntermediateGroups: true
+  generateEmptyDirectories: true
+
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    SWIFT_STRICT_CONCURRENCY: complete
+    MACOSX_DEPLOYMENT_TARGET: "26.0"
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    # Signing is ad-hoc ("Sign to Run Locally") — the `rebuild-and-run.sh`
+    # script passes `CODE_SIGN_IDENTITY="-"` so every build is signed.
+    # We DON'T rely on stable code signing to persist TCC consent, because
+    # that would require an Apple Developer team. Instead, the app routes
+    # the user through an `NSOpenPanel` on first launch and stores a
+    # security-scoped bookmark — Powerbox's explicit user grant bypasses
+    # the TCC prompt, even across rebuilds.
+    DEVELOPMENT_TEAM: ""
+    CODE_SIGN_STYLE: Automatic
+    ENABLE_HARDENED_RUNTIME: YES
+
+targets:
+  Subtext:
+    type: application
+    platform: macOS
+    deploymentTarget: "26.0"
+    sources:
+      - path: Subtext
+    resources:
+      - path: Subtext/Resources
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.tomelden.subtext
+        PRODUCT_NAME: Subtext
+        INFOPLIST_FILE: Subtext/Resources/Info.plist
+        CODE_SIGN_ENTITLEMENTS: Subtext/Resources/Subtext.entitlements
+        ENABLE_APP_SANDBOX: NO
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        COMBINE_HIDPI_IMAGES: YES
+    info:
+      path: Subtext/Resources/Info.plist
+      properties:
+        CFBundleDisplayName: Subtext
+        CFBundleShortVersionString: "0.1.0"
+        CFBundleVersion: "1"
+        LSMinimumSystemVersion: "26.0"
+        NSHumanReadableCopyright: "© 2026 Tom Elden"
+        NSMainStoryboardFile: ""
+        NSPrincipalClass: NSApplication
+        NSSupportsAutomaticTermination: true
+        NSSupportsSuddenTermination: true
+        # Usage strings shown in the macOS TCC consent prompt. The
+        # onboarding flow goes through NSOpenPanel so these should rarely
+        # appear, but we keep them for clarity in case a rogue code path
+        # ever touches a protected folder directly.
+        NSDocumentsFolderUsageDescription: "Subtext reads and writes splash.json, site.json, and MDX project files inside the website repo you pick."
+        NSDesktopFolderUsageDescription: "Subtext may read your Website repo if you keep it on the Desktop."
+        NSDownloadsFolderUsageDescription: "Subtext may read your Website repo if you keep it in Downloads."
+  SubtextTests:
+    type: bundle.unit-test
+    platform: macOS
+    deploymentTarget: "26.0"
+    sources:
+      - path: SubtextTests
+    dependencies:
+      - target: Subtext
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.tomelden.subtext.tests
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/Subtext.app/Contents/MacOS/Subtext"
+        BUNDLE_LOADER: "$(TEST_HOST)"
+        GENERATE_INFOPLIST_FILE: YES
+
+schemes:
+  Subtext:
+    build:
+      targets:
+        Subtext: all
+    test:
+      targets:
+        - SubtextTests
