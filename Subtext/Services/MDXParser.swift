@@ -191,9 +191,13 @@ enum MDXParser {
         let slug = string("slug") ?? fileName.replacingOccurrences(of: ".mdx", with: "")
         let description = string("description") ?? ""
         let date = string("date") ?? ""
-        let categoryRaw = string("category") ?? "writing"
-        let category = ProjectFrontmatter.Category(rawValue: categoryRaw) ?? .writing
-        let tags = array("tags").compactMap { $0.stringValue }
+        let ownershipRaw = string("ownership") ?? "work"
+        let ownership = ProjectFrontmatter.Ownership(rawValue: ownershipRaw) ?? .work
+        var tags = array("tags").compactMap { $0.stringValue }
+        // Legacy category migration path: preserve prior single category as a tag.
+        if let legacyCategory = string("category"), !legacyCategory.isEmpty, !tags.contains(legacyCategory) {
+            tags.append(legacyCategory)
+        }
 
         var hero: ProjectFrontmatter.Hero?
         if case .mapping(let h) = map["hero"] ?? .null {
@@ -232,7 +236,7 @@ enum MDXParser {
             slug: slug,
             description: description,
             date: date,
-            category: category,
+            ownership: ownership,
             tags: tags,
             thumbnail: string("thumbnail"),
             headerImage: headerImage,

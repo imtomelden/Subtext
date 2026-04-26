@@ -424,7 +424,7 @@ actor BuildService {
             return []
         }
 
-        let requiredKeys = ["title", "slug", "description", "date", "category", "tags"]
+        let requiredKeys = ["title", "slug", "description", "date", "ownership", "tags"]
         var issues: [PreflightIssue] = []
 
         for file in files where file.pathExtension.lowercased() == "mdx" {

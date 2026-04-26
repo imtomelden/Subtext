@@ -575,7 +575,7 @@ final class CMSStore {
 
     // MARK: - Mutations: Projects
 
-    func createProject(slug: String, title: String, category: ProjectFrontmatter.Category) async {
+    func createProject(slug: String, title: String, ownership: ProjectFrontmatter.Ownership) async {
         let slug = slug.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !slug.isEmpty else { return }
         let fileName = "\(slug).mdx"
@@ -583,7 +583,7 @@ final class CMSStore {
             showError("A project with that slug already exists.")
             return
         }
-        let front = ProjectFrontmatter.newDraft(slug: slug, title: title, category: category)
+        let front = ProjectFrontmatter.newDraft(slug: slug, title: title, ownership: ownership)
         let doc = ProjectDocument(
             fileName: fileName,
             frontmatter: front,

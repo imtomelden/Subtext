@@ -51,6 +51,9 @@ open Subtext.xcodeproj
 
 Then build and run the `Subtext` scheme.
 
+Canonical project file: `Subtext.xcodeproj`.
+Legacy numbered project snapshots (for historical recovery only) are archived in `archive/xcodeproj-legacy/`.
+
 For a local rebuild and launch, you can also use [`scripts/rebuild-and-run.sh`](scripts/rebuild-and-run.sh) if present in your checkout.
 
 ### Command-line build (CI or headless)

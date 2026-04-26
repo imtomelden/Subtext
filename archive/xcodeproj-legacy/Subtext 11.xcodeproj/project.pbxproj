@@ -80,7 +80,6 @@
 		C1CDBA5221FC0B4EA8452F6D /* ProjectValidation.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAAC7B4C51496ABEF77F8F2D /* ProjectValidation.swift */; };
 		C1E111BC0A4D444D04F1206A /* Info 2.plist in Resources */ = {isa = PBXBuildFile; fileRef = 12FC8ECF171260D8AEA57F71 /* Info 2.plist */; };
 		C7FD6159471B1DD2BCA6D397 /* HomeHistoryPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 86FFDCFDD1D1228DBD9EB661 /* HomeHistoryPanel.swift */; };
-		C85563D8A34AB0F57C60F486 /* PrototypeVisualEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 301482FB68C132ED352F9E45 /* PrototypeVisualEditor.swift */; };
 		CBF79B0A5961CEB2E5A53456 /* MDXParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3104157DE538B6C04365264 /* MDXParser.swift */; };
 		D4F72564F9FBA5C8E0BA779E /* RecentRepos.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3CDE2269385DE290EF283932 /* RecentRepos.swift */; };
 		D64041722CE8906948B5D0B4 /* HistoryRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = BAFFCDE09C2EF5330CC213B0 /* HistoryRow.swift */; };
@@ -133,7 +132,6 @@
 		1FBD1B4DD9F854014EDBB7E2 /* SourcePreviewDrawer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SourcePreviewDrawer.swift; sourceTree = "<group>"; };
 		294B42C005CD5360578BFBE4 /* PublishController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PublishController.swift; sourceTree = "<group>"; };
 		2A589AF21D716E59A0D45E25 /* VisualContent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VisualContent.swift; sourceTree = "<group>"; };
-		301482FB68C132ED352F9E45 /* PrototypeVisualEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrototypeVisualEditor.swift; sourceTree = "<group>"; };
 		32C4329639406770DA62DA5B /* VideoShowcaseBlockEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoShowcaseBlockEditor.swift; sourceTree = "<group>"; };
 		3351A210807AE41C3192744D /* MDXSerialiser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MDXSerialiser.swift; sourceTree = "<group>"; };
 		350B613D0ACAEA68C234FE32 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
@@ -399,7 +397,6 @@
 			isa = PBXGroup;
 			children = (
 				4AE6DC3CC5FAAAA18310F3A5 /* PhotoVisualEditor.swift */,
-				301482FB68C132ED352F9E45 /* PrototypeVisualEditor.swift */,
 				5A4EAF87154DAF2C7E28EEBD /* ScrambleVisualEditor.swift */,
 				190ADAD48524AE240292F6E7 /* SpeechVisualEditor.swift */,
 				57E14DE46079188C14D48B16 /* TerminalVisualEditor.swift */,
@@ -633,7 +630,6 @@
 				C1CDBA5221FC0B4EA8452F6D /* ProjectValidation.swift in Sources */,
 				9A596EC56340DB0EB04E6FCB /* ProjectsListView.swift in Sources */,
 				8C540661B18B333ECF22036B /* ProjectsRootView.swift in Sources */,
-				C85563D8A34AB0F57C60F486 /* PrototypeVisualEditor.swift in Sources */,
 				8E47CABEBE832E47345B0E9B /* PublishController.swift in Sources */,
 				2EA593E7114D03EF616869F3 /* PublishLogSheet.swift in Sources */,
 				7A2BCD7F724FDCE9DEF5FF69 /* QuickTipsBanner.swift in Sources */,

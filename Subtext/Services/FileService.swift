@@ -136,6 +136,12 @@ actor FileService {
             needsRewrite = true
         }
 
+        if frontmatterKey("ownership", existsIn: raw) == false {
+            // Ensure legacy files gain explicit ownership so taxonomy is stable.
+            doc.frontmatter.ownership = .work
+            needsRewrite = true
+        }
+
         if doc.frontmatter.draft {
             // Drafts are no longer the default project state; normalise old
             // files to published so all project pages are treated consistently.

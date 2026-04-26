@@ -439,7 +439,7 @@ final class DevServerController {
         if line.contains("title") { return "title" }
         if line.contains("description") { return "description" }
         if line.contains("date") { return "date" }
-        if line.contains("category") { return "category" }
+        if line.contains("ownership") { return "ownership" }
         return nil
     }
 

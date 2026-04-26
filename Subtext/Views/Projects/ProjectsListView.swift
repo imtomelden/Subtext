@@ -169,6 +169,12 @@ private struct ProjectListCard: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
+                    if !document.frontmatter.tags.isEmpty {
+                        Text(document.frontmatter.tags.prefix(3).map { "#\($0)" }.joined(separator: " "))
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                            .lineLimit(1)
+                    }
                 }
             }
         } trailing: {
@@ -223,15 +229,15 @@ private struct ProjectListCard: View {
     }
 
     private var categoryPill: some View {
-        let tint = document.frontmatter.category.tint
-        return Text(document.frontmatter.category.displayName.uppercased())
+        let tint = document.frontmatter.ownership.tint
+        return Text(document.frontmatter.ownership.displayName.uppercased())
             .font(.caption2.weight(.bold))
             .tracking(0.5)
             .foregroundStyle(tint)
             .padding(.horizontal, 8)
             .padding(.vertical, 4)
             .background(Capsule().fill(tint.opacity(0.18)))
-            .accessibilityLabel("\(document.frontmatter.category.displayName) category")
+            .accessibilityLabel("\(document.frontmatter.ownership.displayName) ownership")
     }
 }
 
@@ -240,7 +246,7 @@ private struct NewProjectSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var title: String = ""
     @State private var slug: String = ""
-    @State private var category: ProjectFrontmatter.Category = .writing
+    @State private var ownership: ProjectFrontmatter.Ownership = .work
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
@@ -262,10 +268,10 @@ private struct NewProjectSheet: View {
                     .textFieldStyle(.roundedBorder)
             }
 
-            FieldRow("Category") {
-                Picker("Category", selection: $category) {
-                    ForEach(ProjectFrontmatter.Category.allCases) { cat in
-                        Text(cat.displayName).tag(cat)
+            FieldRow("Ownership") {
+                Picker("Ownership", selection: $ownership) {
+                    ForEach(ProjectFrontmatter.Ownership.allCases) { option in
+                        Text(option.displayName).tag(option)
                     }
                 }
                 .pickerStyle(.segmented)
@@ -277,7 +283,7 @@ private struct NewProjectSheet: View {
                 Button("Cancel", role: .cancel) { dismiss() }
                 Button("Create") {
                     Task {
-                        await store.createProject(slug: slug, title: title, category: category)
+                        await store.createProject(slug: slug, title: title, ownership: ownership)
                         dismiss()
                     }
                 }

@@ -198,15 +198,12 @@ extension Color {
     static let subtextSubtleFill = Color.secondary.opacity(0.18)
 }
 
-/// Category colors for project cards. Centralised so tag + pill usage agrees
-/// across the app and future categories are trivial to add.
-extension ProjectFrontmatter.Category {
+/// Ownership colors for project cards and badges.
+extension ProjectFrontmatter.Ownership {
     var tint: Color {
         switch self {
-        case .video: Color(red: 0.55, green: 0.45, blue: 0.95)
-        case .writing: Color(red: 0.36, green: 0.64, blue: 0.95)
-        case .council: Color(red: 0.95, green: 0.70, blue: 0.30)
-        case .tech: Color(red: 0.36, green: 0.83, blue: 0.64)
+        case .work: Color(red: 0.36, green: 0.83, blue: 0.64)
+        case .personal: Color(red: 0.55, green: 0.45, blue: 0.95)
         }
     }
 }

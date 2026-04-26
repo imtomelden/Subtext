@@ -225,10 +225,10 @@ struct ProjectEditorView: View {
                         .textFieldStyle(.roundedBorder)
                 }
 
-                FieldRow("Category") {
-                    Picker("Category", selection: $document.frontmatter.category) {
-                        ForEach(ProjectFrontmatter.Category.allCases) { cat in
-                            Text(cat.displayName).tag(cat)
+                FieldRow("Ownership") {
+                    Picker("Ownership", selection: $document.frontmatter.ownership) {
+                        ForEach(ProjectFrontmatter.Ownership.allCases) { ownership in
+                            Text(ownership.displayName).tag(ownership)
                         }
                     }
                     .pickerStyle(.segmented)
@@ -297,7 +297,7 @@ struct ProjectEditorView: View {
                 .padding(.top, 8)
             }
 
-            if document.frontmatter.category == .video {
+            if document.frontmatter.tags.contains(where: { $0.caseInsensitiveCompare("video") == .orderedSame }) {
                 DisclosureGroup("Video metadata", isExpanded: $videoMetaExpanded) {
                     VStack(alignment: .leading, spacing: 12) {
                         FieldRow("Runtime") {

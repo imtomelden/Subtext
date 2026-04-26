@@ -17,7 +17,7 @@ enum MDXSerialiser {
         lines.append(keyValue("slug", raw: f.slug))
         lines.append(keyValue("description", quoted: f.description))
         lines.append("date: \(yamlDateValue(f.date))")
-        lines.append(keyValue("category", quoted: f.category.rawValue))
+        lines.append(keyValue("ownership", quoted: f.ownership.rawValue))
         if f.featured { lines.append("featured: true") }
         if let role = f.role { lines.append(keyValue("role", quoted: role)) }
         if let duration = f.duration { lines.append(keyValue("duration", quoted: duration)) }

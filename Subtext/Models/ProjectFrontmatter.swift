@@ -4,20 +4,16 @@ import Foundation
 /// The website's `projectCollectionSchema` is the source of truth; any
 /// additions there should be reflected here.
 struct ProjectFrontmatter: Equatable, Sendable {
-    enum Category: String, Codable, CaseIterable, Sendable, Identifiable {
-        case video
-        case writing
-        case council
-        case tech
+    enum Ownership: String, Codable, CaseIterable, Sendable, Identifiable {
+        case work
+        case personal
 
         var id: String { rawValue }
 
         var displayName: String {
             switch self {
-            case .video: "Video"
-            case .writing: "Writing"
-            case .council: "Council"
-            case .tech: "Tech"
+            case .work: "Work"
+            case .personal: "Personal"
             }
         }
     }
@@ -53,7 +49,7 @@ struct ProjectFrontmatter: Equatable, Sendable {
     var description: String
     /// Stored as the literal string from the MDX ("2026-04-11" or similar).
     var date: String
-    var category: Category
+    var ownership: Ownership
     var tags: [String]
     var thumbnail: String?
     var headerImage: String?
@@ -70,13 +66,13 @@ struct ProjectFrontmatter: Equatable, Sendable {
     var hero: Hero?
     var blocks: [ProjectBlock]
 
-    static func newDraft(slug: String, title: String, category: Category = .writing) -> ProjectFrontmatter {
+    static func newDraft(slug: String, title: String, ownership: Ownership = .work) -> ProjectFrontmatter {
         ProjectFrontmatter(
             title: title,
             slug: slug,
             description: "Add a short description",
             date: ISO8601Date.today(),
-            category: category,
+            ownership: ownership,
             tags: [],
             thumbnail: nil,
             headerImage: nil,
