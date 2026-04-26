@@ -153,6 +153,11 @@ struct HomeEditorView: View {
     @ViewBuilder
     private var toolbarButtons: some View {
         HStack(spacing: 10) {
+            AutosaveIndicator(
+                isDirty: store.isSplashDirty,
+                lastPersistedAt: store.lastDraftPersistedAt
+            )
+
             RevealInFinderButton(
                 url: RepoConstants.splashFile,
                 helpText: "Reveal splash.json in Finder"
@@ -354,7 +359,7 @@ struct HomeEditorView: View {
 
     @ViewBuilder
     private var reorderHint: some View {
-        Label("Use arrows to reorder", systemImage: "arrow.up.arrow.down")
+        Label("Use chevrons or ⌘↑/⌘↓ to reorder", systemImage: "chevron.up.chevron.down")
             .labelStyle(.titleAndIcon)
             .font(.caption)
             .foregroundStyle(.tertiary)
@@ -381,19 +386,13 @@ struct HomeEditorView: View {
 
     @ViewBuilder
     private func emptyState(title: String, hint: String) -> some View {
-        VStack(spacing: 6) {
-            Text(title).font(SubtextUI.Typography.bodyStrong)
-            Text(hint).font(SubtextUI.Typography.caption).foregroundStyle(.secondary)
+        GlassSurface(prominence: .interactive, cornerRadius: 12) {
+            VStack(spacing: 6) {
+                Text(title).font(SubtextUI.Typography.bodyStrong)
+                Text(hint).font(SubtextUI.Typography.caption).foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 28)
         }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 28)
-        .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(.thinMaterial.opacity(0.45))
-                .overlay {
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .stroke(Color.white.opacity(0.16), lineWidth: 0.8)
-                }
-        )
     }
 }

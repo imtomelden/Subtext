@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 struct ProjectEditorView: View {
@@ -14,10 +15,14 @@ struct ProjectEditorView: View {
     @State private var frontmatterExpanded = true
     @State private var advancedExpanded = false
     @State private var videoMetaExpanded = false
+    @State private var caseStudyExpanded = false
+    @State private var heroExpanded = false
+    @State private var didLoadDisclosureState = false
     @State private var slugManuallyEdited = false
     @State private var draggingBlockID: UUID?
     @State private var showSourcePreview = false
     @State private var editorMode: EditorMode = .split
+    @State private var bodySelection: NSRange = NSRange(location: 0, length: 0)
 
     private enum EditorMode: String, CaseIterable, Identifiable {
         case edit
@@ -88,6 +93,29 @@ struct ProjectEditorView: View {
                 slugManuallyEdited = true
             }
         }
+        .onAppear {
+            // Restore the per-repo disclosure state once. Subsequent
+            // toggles flow back to `.subtext/preferences.json` via the
+            // onChange handlers below.
+            guard !didLoadDisclosureState else { return }
+            didLoadDisclosureState = true
+            advancedExpanded = store.expandedDisclosure("project.advanced", default: false)
+            videoMetaExpanded = store.expandedDisclosure("project.videoMeta", default: false)
+            caseStudyExpanded = store.expandedDisclosure("project.caseStudy", default: false)
+            heroExpanded = store.expandedDisclosure("project.hero", default: false)
+        }
+        .onChange(of: advancedExpanded) { _, value in
+            store.recordExpandedDisclosure("project.advanced", isExpanded: value)
+        }
+        .onChange(of: videoMetaExpanded) { _, value in
+            store.recordExpandedDisclosure("project.videoMeta", isExpanded: value)
+        }
+        .onChange(of: caseStudyExpanded) { _, value in
+            store.recordExpandedDisclosure("project.caseStudy", isExpanded: value)
+        }
+        .onChange(of: heroExpanded) { _, value in
+            store.recordExpandedDisclosure("project.hero", isExpanded: value)
+        }
     }
 
     private func moveSelectedBlock(by delta: Int) {
@@ -118,6 +146,11 @@ struct ProjectEditorView: View {
             Spacer()
 
             HStack(spacing: 10) {
+                AutosaveIndicator(
+                    isDirty: store.isProjectDirty(document.fileName),
+                    lastPersistedAt: store.lastDraftPersistedAt
+                )
+
                 RevealInFinderButton(
                     url: projectFileURL,
                     helpText: "Reveal \(document.fileName) in Finder"
@@ -189,6 +222,9 @@ struct ProjectEditorView: View {
                                 .foregroundStyle(.secondary)
                         }
                         Spacer()
+                        if !validationIssues.isEmpty {
+                            collapsedValidationChip
+                        }
                         Image(systemName: "chevron.right")
                             .rotationEffect(.degrees(frontmatterExpanded ? 90 : 0))
                             .foregroundStyle(.secondary)
@@ -210,6 +246,25 @@ struct ProjectEditorView: View {
                 }
             }
         }
+    }
+
+    /// Compact indicator surfaced in the collapsed frontmatter header so users
+    /// can see at a glance that there are still required fields to fix without
+    /// expanding the full panel.
+    @ViewBuilder
+    private var collapsedValidationChip: some View {
+        let count = validationIssues.count
+        Label("\(count) to fix", systemImage: "exclamationmark.triangle.fill")
+            .labelStyle(.titleAndIcon)
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(Color.subtextWarning)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 3)
+            .background(
+                Capsule().fill(Color.subtextWarning.opacity(0.18))
+            )
+            .help(validationIssues.prefix(5).map { $0.message }.joined(separator: "\n"))
+            .accessibilityLabel("\(count) validation issue\(count == 1 ? "" : "s")")
     }
 
     @ViewBuilder
@@ -292,6 +347,69 @@ struct ProjectEditorView: View {
                         }
                         .toggleStyle(.switch)
                         .tint(.orange)
+                    }
+                }
+                .padding(.top, 8)
+            }
+
+            DisclosureGroup("Case study", isExpanded: $caseStudyExpanded) {
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack(alignment: .top, spacing: 14) {
+                        FieldRow("Role") {
+                            TextField("e.g. Lead designer", text: optionalBinding(\.role))
+                                .textFieldStyle(.roundedBorder)
+                        }
+                        FieldRow("Duration") {
+                            TextField("e.g. 3 months", text: optionalBinding(\.duration))
+                                .textFieldStyle(.roundedBorder)
+                        }
+                    }
+
+                    FieldRow("Impact") {
+                        TextField("Headline outcome (one line)", text: optionalBinding(\.impact), axis: .vertical)
+                            .textFieldStyle(.roundedBorder)
+                            .lineLimit(2...3)
+                    }
+
+                    FieldRow("Challenge") {
+                        TextField("What problem this project addressed", text: optionalBinding(\.challenge), axis: .vertical)
+                            .textFieldStyle(.roundedBorder)
+                            .lineLimit(2...4)
+                    }
+
+                    FieldRow("Approach") {
+                        TextField("How you tackled it", text: optionalBinding(\.approach), axis: .vertical)
+                            .textFieldStyle(.roundedBorder)
+                            .lineLimit(2...4)
+                    }
+
+                    FieldRow("Outcome") {
+                        TextField("What shipped, what changed", text: optionalBinding(\.outcome), axis: .vertical)
+                            .textFieldStyle(.roundedBorder)
+                            .lineLimit(2...4)
+                    }
+                }
+                .padding(.top, 8)
+            }
+
+            DisclosureGroup("Hero", isExpanded: $heroExpanded) {
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Optional override for the project's hero block. Leave empty to fall back to the title and description.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
+                    FieldRow("Eyebrow") {
+                        TextField("Small label above title", text: heroBinding(\.eyebrow))
+                            .textFieldStyle(.roundedBorder)
+                    }
+                    FieldRow("Title") {
+                        TextField("Hero title (overrides project title)", text: heroBinding(\.title))
+                            .textFieldStyle(.roundedBorder)
+                    }
+                    FieldRow("Subtitle") {
+                        TextField("Hero subtitle", text: heroBinding(\.subtitle), axis: .vertical)
+                            .textFieldStyle(.roundedBorder)
+                            .lineLimit(2...3)
                     }
                 }
                 .padding(.top, 8)
@@ -423,7 +541,7 @@ struct ProjectEditorView: View {
                 .menuStyle(.borderlessButton)
                 .help("Editor display options")
 
-                MarkdownInsertToolbar(text: $document.body)
+                MarkdownInsertToolbar(text: $document.body, selection: $bodySelection)
             }
 
             if liveMarkdownEnabled {
@@ -446,19 +564,28 @@ struct ProjectEditorView: View {
     }
 
     private var sourceEditor: some View {
-        TextEditor(text: $document.body)
-            .font(sourceFont)
-            .scrollContentBackground(.hidden)
-            .padding(12)
-            .frame(maxWidth: .infinity, minHeight: 260, alignment: .topLeading)
-            .background(
-                GlassSurface(prominence: .interactive, cornerRadius: 12) { Color.clear }
-            )
-            .accessibilityLabel("Markdown source editor")
+        MarkdownSourceEditor(
+            text: $document.body,
+            selection: $bodySelection,
+            font: nsSourceFont
+        )
+        .frame(maxWidth: .infinity, minHeight: 260, alignment: .topLeading)
+        .background(
+            GlassSurface(prominence: .interactive, cornerRadius: 12) { Color.clear }
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .accessibilityLabel("Markdown source editor")
     }
 
     private var sourceFont: Font {
         useMonospacedSourceFont ? .body.monospaced() : .body
+    }
+
+    private var nsSourceFont: NSFont {
+        let size = NSFont.systemFontSize
+        return useMonospacedSourceFont
+            ? NSFont.monospacedSystemFont(ofSize: size, weight: .regular)
+            : NSFont.systemFont(ofSize: size)
     }
 
     @ViewBuilder
@@ -496,6 +623,19 @@ struct ProjectEditorView: View {
         )
     }
 
+    /// Materialise the optional `hero` struct on first edit and clear it back to
+    /// `nil` when every sub-field is empty so the YAML stays clean.
+    private func heroBinding(_ keyPath: WritableKeyPath<ProjectFrontmatter.Hero, String?>) -> Binding<String> {
+        Binding(
+            get: { document.frontmatter.hero?[keyPath: keyPath] ?? "" },
+            set: { newValue in
+                var hero = document.frontmatter.hero ?? .init(eyebrow: nil, title: nil, subtitle: nil)
+                hero[keyPath: keyPath] = newValue.isEmpty ? nil : newValue
+                document.frontmatter.hero = hero.isEmpty ? nil : hero
+            }
+        )
+    }
+
     private var videoMetaCreditsBinding: Binding<[String]> {
         Binding(
             get: { document.frontmatter.videoMeta?.credits ?? [] },
@@ -529,10 +669,25 @@ struct ProjectEditorView: View {
     }
 
     private func insertMarkdownSnippet(_ snippet: String) {
-        if !document.body.hasSuffix("\n") && !document.body.isEmpty {
-            document.body += "\n"
-        }
-        document.body += "\n\(snippet)\n"
+        let nsText = document.body as NSString
+        let length = nsText.length
+        let location = max(0, min(bodySelection.location, length))
+        let span = max(0, min(bodySelection.length, length - location))
+        let range = NSRange(location: location, length: span)
+
+        let needsLeading: Bool = {
+            if location == 0 { return false }
+            return nsText.substring(with: NSRange(location: location - 1, length: 1)) != "\n"
+        }()
+        let needsTrailing: Bool = {
+            if location + span >= length { return false }
+            return nsText.substring(with: NSRange(location: location + span, length: 1)) != "\n"
+        }()
+        let composed = (needsLeading ? "\n" : "") + snippet + (needsTrailing ? "\n" : "")
+        document.body = nsText.replacingCharacters(in: range, with: composed)
+
+        let caret = location + (composed as NSString).length
+        bodySelection = NSRange(location: caret, length: 0)
     }
 
     private func cycleEditorMode() {

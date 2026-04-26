@@ -142,12 +142,11 @@ actor FileService {
             needsRewrite = true
         }
 
-        if doc.frontmatter.draft {
-            // Drafts are no longer the default project state; normalise old
-            // files to published so all project pages are treated consistently.
-            doc.frontmatter.draft = false
-            needsRewrite = true
-        }
+        // NOTE: We deliberately do NOT touch `frontmatter.draft` here. The
+        // Astro site treats `draft: true` as "do not publish", so silently
+        // clearing it on read would publish content the author intended to
+        // keep private. Toggling draft is now an explicit user action via
+        // the project editor's Publish/Unpublish toggle.
 
         if needsRewrite {
             try atomicWrite(Data(MDXSerialiser.serialise(doc).utf8), to: url)

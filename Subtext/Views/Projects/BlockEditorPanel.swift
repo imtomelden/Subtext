@@ -15,6 +15,11 @@ struct BlockEditorPanel: View {
                 .padding(20)
             }
         }
+        .focusable()
+        .onKeyPress(.escape) {
+            onClose()
+            return .handled
+        }
     }
 
     @ViewBuilder

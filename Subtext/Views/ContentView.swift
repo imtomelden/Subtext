@@ -10,6 +10,7 @@ struct ContentView: View {
     @AppStorage("SubtextAppearanceMode") private var appearanceModeRaw = AppAppearanceMode.system.rawValue
     @AppStorage("SubtextDismissedQuickTips") private var dismissedQuickTips = false
     @State private var tab: SidebarTab = .home
+    @State private var didApplyInitialTab = false
     @State private var paletteMode: CommandPalette.Mode?
     @State private var columnVisibility: NavigationSplitViewVisibility = .automatic
     @State private var showKeyboardShortcuts = false
@@ -115,6 +116,21 @@ struct ContentView: View {
         }
         .task(id: backgroundRefreshID) {
             await runBackgroundGitRefresh()
+        }
+        .onChange(of: store.loadState) { _, newState in
+            // Restore the last-selected sidebar tab once the repo finishes
+            // loading. We only apply this on the first transition into
+            // `.loaded` so subsequent reloads (e.g. force-refresh) don't
+            // yank the user back to a tab they intentionally left.
+            guard !didApplyInitialTab, newState == .loaded else { return }
+            didApplyInitialTab = true
+            if let raw = store.repoPreferences.lastSidebarTab,
+               let restored = SidebarTab(rawValue: raw) {
+                tab = restored
+            }
+        }
+        .onChange(of: tab) { _, newTab in
+            store.recordSidebarTab(newTab)
         }
     }
 

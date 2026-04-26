@@ -1,6 +1,11 @@
 import SwiftUI
 
 /// Pill-style tag input. Press Return to add, click a pill to remove.
+///
+/// Tags are unique within a project (`addTag` rejects duplicates), so we use
+/// the tag string itself as a stable `ForEach` identity instead of the row's
+/// integer offset. That keeps the pills from churning when the user reorders
+/// or removes a tag in the middle of the list.
 struct TagEditor: View {
     @Binding var tags: [String]
     @State private var draft: String = ""
@@ -8,9 +13,11 @@ struct TagEditor: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             FlowLayout(spacing: 6) {
-                ForEach(Array(tags.enumerated()), id: \.offset) { idx, tag in
+                ForEach(tags, id: \.self) { tag in
                     TagPill(text: tag) {
-                        tags.remove(at: idx)
+                        if let idx = tags.firstIndex(of: tag) {
+                            tags.remove(at: idx)
+                        }
                     }
                 }
             }

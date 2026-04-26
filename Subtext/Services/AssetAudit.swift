@@ -159,7 +159,7 @@ actor AssetAudit {
         switch visual {
         case .photo(let p):
             addIfAsset(p.src, into: &set)
-        case .ticket, .speech, .scramble, .terminal:
+        case .ticket, .speech, .scramble, .terminal, .clapper:
             break
         }
     }
@@ -254,21 +254,222 @@ actor AssetAudit {
         return out
     }
 
+    // MARK: - Link audit
+
+    /// One issue surfaced by the link audit. `source` describes where the
+    /// reference lives (e.g. "Splash CTA", "project hero CTA") so the user
+    /// can locate it; `href` is the offending value.
+    struct LinkIssue: Sendable, Equatable, Identifiable {
+        enum Severity: Sendable { case warning, error }
+        enum Kind: Sendable {
+            case empty
+            case malformedURL
+            case unknownInternalProject
+            case mailtoMissingAddress
+        }
+        var id = UUID()
+        var fileName: String?
+        var source: String
+        var href: String
+        var message: String
+        var severity: Severity
+        var kind: Kind
+    }
+
+    /// Walks every CTA href + project external URL + markdown body link and
+    /// surfaces obvious failures. Internal `/projects/<slug>` links are
+    /// validated against the in-memory project list so a stale
+    /// "see /projects/old-name" footer rots loudly.
+    func linkIssues(splash: SplashContent, projects: [ProjectDocument]) -> [LinkIssue] {
+        let knownProjectSlugs: Set<String> = Set(
+            projects.map { $0.frontmatter.slug }.filter { !$0.isEmpty }
+        )
+        var issues: [LinkIssue] = []
+
+        for cta in splash.ctas {
+            let title = !cta.heading.isEmpty ? cta.heading : (!cta.name.isEmpty ? cta.name : "Splash CTA")
+            issues.append(contentsOf: validate(href: cta.href, source: "Splash CTA — \(title)", fileName: nil, knownProjectSlugs: knownProjectSlugs))
+        }
+
+        for project in projects {
+            let prefix = project.frontmatter.title.isEmpty ? project.fileName : project.frontmatter.title
+            if let external = project.frontmatter.externalUrl, !external.isEmpty {
+                issues.append(contentsOf: validate(href: external, source: "\(prefix) — externalUrl", fileName: project.fileName, knownProjectSlugs: knownProjectSlugs))
+            }
+            for block in project.frontmatter.blocks {
+                switch block {
+                case .cta(let cta):
+                    for link in cta.links {
+                        let label = link.label.isEmpty ? "CTA block" : "CTA block “\(link.label)”"
+                        issues.append(contentsOf: validate(href: link.href, source: "\(prefix) — \(label)", fileName: project.fileName, knownProjectSlugs: knownProjectSlugs))
+                    }
+                case .videoShowcase(let v):
+                    if let href = v.ctaHref, !href.isEmpty {
+                        issues.append(contentsOf: validate(href: href, source: "\(prefix) — video CTA", fileName: project.fileName, knownProjectSlugs: knownProjectSlugs))
+                    }
+                    switch v.source {
+                    case .youtube(let id), .vimeo(let id):
+                        if id.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                            issues.append(LinkIssue(
+                                fileName: project.fileName,
+                                source: "\(prefix) — video showcase",
+                                href: "(empty)",
+                                message: "Video ID is empty.",
+                                severity: .error,
+                                kind: .empty
+                            ))
+                        }
+                    case .file(_, _, _, let fallback, _):
+                        if let fallback, !fallback.isEmpty,
+                           !fallback.hasPrefix("/"),
+                           URL(string: fallback)?.scheme == nil {
+                            issues.append(LinkIssue(
+                                fileName: project.fileName,
+                                source: "\(prefix) — video fallback URL",
+                                href: fallback,
+                                message: "Fallback URL is missing a scheme (https://…) or root slash.",
+                                severity: .warning,
+                                kind: .malformedURL
+                            ))
+                        }
+                    }
+                case .narrative, .quote, .keyStats, .goalsMetrics, .mediaGallery, .projectSnapshot:
+                    break
+                }
+            }
+            // Markdown body links: [label](href) — anchors and asset paths
+            // skipped since assets are covered by the broken/orphan diff.
+            let body = project.body as NSString
+            let range = NSRange(location: 0, length: body.length)
+            for match in Self.markdownLinkPattern.matches(in: project.body, range: range) {
+                guard match.numberOfRanges > 2,
+                      let labelRange = Range(match.range(at: 1), in: project.body),
+                      let hrefRange = Range(match.range(at: 2), in: project.body) else { continue }
+                let label = String(project.body[labelRange])
+                let href = String(project.body[hrefRange])
+                if Self.isAssetReference(href) { continue }
+                issues.append(contentsOf: validate(
+                    href: href,
+                    source: "\(prefix) — body link “\(label.prefix(40))”",
+                    fileName: project.fileName,
+                    knownProjectSlugs: knownProjectSlugs
+                ))
+            }
+        }
+
+        return issues
+    }
+
+    private nonisolated static let markdownLinkPattern: NSRegularExpression = {
+        // Matches [label](href) but not ![alt](src)
+        try! NSRegularExpression(pattern: #"(?<!\!)\[([^\]]+)\]\(([^)\s]+)"#)
+    }()
+
+    private static func isAssetReference(_ href: String) -> Bool {
+        let lower = href.lowercased()
+        let extensions = ["png", "jpg", "jpeg", "gif", "webp", "heic", "avif", "svg", "mp4", "mov", "webm", "pdf"]
+        return extensions.contains { lower.hasSuffix(".\($0)") }
+    }
+
+    private func validate(
+        href: String,
+        source: String,
+        fileName: String?,
+        knownProjectSlugs: Set<String>
+    ) -> [LinkIssue] {
+        let trimmed = href.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        if trimmed.isEmpty {
+            return [LinkIssue(
+                fileName: fileName,
+                source: source,
+                href: trimmed,
+                message: "Link target is empty.",
+                severity: .error,
+                kind: .empty
+            )]
+        }
+
+        // Anchors and on-page references — assume the author owns these.
+        if trimmed.hasPrefix("#") { return [] }
+
+        if trimmed.hasPrefix("mailto:") {
+            let address = String(trimmed.dropFirst("mailto:".count))
+            if address.isEmpty {
+                return [LinkIssue(
+                    fileName: fileName,
+                    source: source,
+                    href: trimmed,
+                    message: "Mailto link is missing an address.",
+                    severity: .error,
+                    kind: .mailtoMissingAddress
+                )]
+            }
+            return []
+        }
+
+        if trimmed.hasPrefix("http://") || trimmed.hasPrefix("https://") {
+            if URL(string: trimmed) == nil {
+                return [LinkIssue(
+                    fileName: fileName,
+                    source: source,
+                    href: trimmed,
+                    message: "URL doesn't parse — missing host or invalid characters.",
+                    severity: .warning,
+                    kind: .malformedURL
+                )]
+            }
+            return []
+        }
+
+        // Internal site links — must start with `/`.
+        if !trimmed.hasPrefix("/") {
+            return [LinkIssue(
+                fileName: fileName,
+                source: source,
+                href: trimmed,
+                message: "Link is missing a scheme (https://…) or root slash.",
+                severity: .warning,
+                kind: .malformedURL
+            )]
+        }
+
+        // Validate `/projects/<slug>` references against the known project
+        // list. Anything else is treated as a regular Astro route.
+        if trimmed.hasPrefix("/projects/") {
+            let slug = String(trimmed.dropFirst("/projects/".count))
+                .trimmingCharacters(in: CharacterSet(charactersIn: "/?#"))
+            if !slug.isEmpty, !knownProjectSlugs.contains(slug) {
+                return [LinkIssue(
+                    fileName: fileName,
+                    source: source,
+                    href: trimmed,
+                    message: "No project with slug “\(slug)”.",
+                    severity: .error,
+                    kind: .unknownInternalProject
+                )]
+            }
+        }
+
+        return []
+    }
+
     // MARK: - Combined audit
 
     struct AuditReport: Sendable, Equatable {
         var assets: [AssetEntry]
         var orphans: [AssetEntry]
         var broken: [String]
+        var linkIssues: [LinkIssue]
         var seoIssues: [String: [SEOIssue]]
 
         var totalBytes: Int64 { assets.reduce(0) { $0 + $1.sizeBytes } }
         var orphanBytes: Int64 { orphans.reduce(0) { $0 + $1.sizeBytes } }
     }
 
-    /// One-shot audit combining enumeration, reference scan, and SEO lint.
-    /// The diff is purely set-based: orphan = on disk but not referenced,
-    /// broken = referenced but not on disk.
+    /// One-shot audit combining enumeration, reference scan, link audit and
+    /// SEO lint. The diff is purely set-based: orphan = on disk but not
+    /// referenced, broken = referenced but not on disk.
     func audit(splash: SplashContent, projects: [ProjectDocument]) -> AuditReport {
         let assets = enumerateAssets()
         let referenced = referencedAssetPaths(splash: splash, projects: projects)
@@ -282,12 +483,14 @@ actor AssetAudit {
             .filter { $0.hasPrefix("/images/") && !knownPaths.contains($0) }
             .sorted()
 
+        let links = linkIssues(splash: splash, projects: projects)
         let seo = seoIssues(for: projects)
 
         return AuditReport(
             assets: assets,
             orphans: orphans,
             broken: broken,
+            linkIssues: links,
             seoIssues: seo
         )
     }

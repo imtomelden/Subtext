@@ -205,8 +205,7 @@ private struct ProjectListCard: View {
             }
         }
         .contentShape(Rectangle())
-        .onTapGesture(count: 2, perform: onOpen)
-        .onTapGesture(count: 1, perform: onOpen)
+        .onTapGesture(perform: onOpen)
     }
 
     /// Cheap inline SEO lint — title length, description presence, thumbnail,

@@ -53,6 +53,7 @@ struct SplashSection: Identifiable, Equatable, Sendable {
         case "writer": "Writer"
         case "tinkerer": "Tinkerer"
         case "blogger": "Blogger"
+        case "on-set": "On Set"
         default: heading.isEmpty ? "Section" : heading
         }
     }
@@ -66,6 +67,7 @@ struct SplashSection: Identifiable, Equatable, Sendable {
         case "writer": "pencil.and.scribble"
         case "tinkerer": "chevron.left.forwardslash.chevron.right"
         case "blogger": "newspaper.fill"
+        case "on-set": "film"
         default: visual.kind.systemImage
         }
     }

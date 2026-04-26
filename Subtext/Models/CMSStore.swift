@@ -40,7 +40,18 @@ final class CMSStore {
 
     /// Last site-health audit issue count (orphans + broken refs + SEO); updated from `SiteHealthSheet`.
     private(set) var siteHealthOpenIssueTotal: Int = 0
-    var selectedProjectFileName: String?
+    /// File name (`foo.mdx`) of the currently open project. Mutating this
+    /// value queues an async write to `.subtext/preferences.json` so the
+    /// next launch can land the user back on the same project.
+    var selectedProjectFileName: String? {
+        didSet {
+            guard selectedProjectFileName != oldValue else { return }
+            let next = selectedProjectFileName
+            schedulePersistRepoPreferences { prefs in
+                prefs.lastOpenProjectFileName = next
+            }
+        }
+    }
     var editingSectionID: String?
     var editingCTAID: String?
     var editingBlockID: UUID?
@@ -64,15 +75,29 @@ final class CMSStore {
     /// from a prior session. Cleared when the user accepts or discards.
     var pendingRecovery: DraftService.Recovery?
 
+    /// Timestamp of the most recent autosave to `.subtext-drafts/` for the
+    /// currently dirty content. `nil` until the first autosave fires after
+    /// load. Surfaced in editor toolbars as "Draft saved · Xs ago" so users
+    /// can trust the safety net.
+    private(set) var lastDraftPersistedAt: Date?
+
     // Services
     let fileService = FileService()
     let backupService = BackupService()
     let draftService = DraftService()
+    let repoSettings = RepoSettingsService()
     let eventLog = EventLog()
     private var watcher: ContentWatcher?
     private var autosaveTask: Task<Void, Never>?
     private var sessionChangedFiles: Set<URL> = []
     private var didFlushSessionBackupsOnClose = false
+
+    /// In-memory mirror of the on-disk per-repo preferences. Loaded once
+    /// after the repo selection succeeds, mutated whenever the user
+    /// switches projects or tabs, and flushed back to disk through the
+    /// `RepoSettingsService` actor.
+    private(set) var repoPreferences: RepoPreferences = .empty
+    private var repoPreferencesPersistTask: Task<Void, Never>?
 
     private static let siteHealthIssuesDefaultsKey = "SubtextLastSiteHealthIssueTotal"
 
@@ -83,6 +108,64 @@ final class CMSStore {
     func recordSiteHealthIssueTotal(_ total: Int) {
         siteHealthOpenIssueTotal = total
         UserDefaults.standard.set(total, forKey: Self.siteHealthIssuesDefaultsKey)
+    }
+
+    // MARK: - Per-repo preferences
+
+    /// Reads `.subtext/preferences.json` and applies any values that the
+    /// store can restore directly (e.g. last-open project). Tab + UI
+    /// state lives in views; they read `repoPreferences` to decide their
+    /// initial value.
+    private func loadRepoPreferences() async {
+        let prefs = await repoSettings.read()
+        self.repoPreferences = prefs
+
+        if let last = prefs.lastOpenProjectFileName,
+           projects.contains(where: { $0.fileName == last }) {
+            self.selectedProjectFileName = last
+        }
+    }
+
+    /// Coalesce repeated mutations into a single disk write. Most of the
+    /// callers (selection changes, tab switches) fire several times
+    /// during a single user gesture; we only need the final value to hit
+    /// disk.
+    private func schedulePersistRepoPreferences(
+        _ mutate: @escaping @Sendable (inout RepoPreferences) -> Void
+    ) {
+        mutate(&repoPreferences)
+        repoPreferencesPersistTask?.cancel()
+        let snapshot = repoPreferences
+        repoPreferencesPersistTask = Task { [repoSettings] in
+            try? await Task.sleep(for: .milliseconds(250))
+            if Task.isCancelled { return }
+            await repoSettings.write(snapshot)
+        }
+    }
+
+    /// Public entry point for the sidebar — same coalescing semantics.
+    func recordSidebarTab(_ tab: SidebarTab) {
+        guard repoPreferences.lastSidebarTab != tab.rawValue else { return }
+        schedulePersistRepoPreferences { prefs in
+            prefs.lastSidebarTab = tab.rawValue
+        }
+    }
+
+    /// Public entry point so views (e.g. `ProjectEditorView` disclosure
+    /// groups) can persist their open/closed state. Keys must be stable
+    /// across releases.
+    func recordExpandedDisclosure(_ key: String, isExpanded: Bool) {
+        var dict = repoPreferences.expandedDisclosures ?? [:]
+        if dict[key] == isExpanded { return }
+        dict[key] = isExpanded
+        let snapshot = dict
+        schedulePersistRepoPreferences { prefs in
+            prefs.expandedDisclosures = snapshot
+        }
+    }
+
+    func expandedDisclosure(_ key: String, default fallback: Bool) -> Bool {
+        repoPreferences.expandedDisclosures?[key] ?? fallback
     }
 
     /// Bumped by global actions (e.g. menu bar) so `SiteSettingsView` can present the sheet.
@@ -127,6 +210,7 @@ final class CMSStore {
             RecentRepos.recordCurrentPrimaryBookmark()
             self.startWatcher()
             self.startAutosave()
+            await self.loadRepoPreferences()
             await self.loadDraftRecovery()
         } catch {
             self.loadState = .failed(error.localizedDescription)
@@ -268,22 +352,29 @@ final class CMSStore {
     /// Write the currently-dirty slices to `.subtext-drafts/`. Clears
     /// each slice's draft once the user saves the real file.
     func persistDraftsIfDirty() async {
+        var didPersistAny = false
         if isSplashDirty {
             try? await draftService.writeSplashDraft(splashContent)
+            didPersistAny = true
         } else {
             await draftService.clearSplashDraft()
         }
         if isSiteDirty {
             try? await draftService.writeSiteDraft(siteSettings)
+            didPersistAny = true
         } else {
             await draftService.clearSiteDraft()
         }
         for doc in projects {
             if isProjectDirty(doc.fileName) {
                 try? await draftService.writeProjectDraft(doc)
+                didPersistAny = true
             } else {
                 await draftService.clearProjectDraft(fileName: doc.fileName)
             }
+        }
+        if didPersistAny {
+            lastDraftPersistedAt = Date()
         }
     }
 

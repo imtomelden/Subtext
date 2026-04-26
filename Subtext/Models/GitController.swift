@@ -85,27 +85,63 @@ final class GitController {
         }
     }
 
-    /// Commit + push in one flow.
+    /// Commit + push in one flow. Fire-and-forget; observers watch
+    /// `activity` / `outcome` to follow progress. For callers that need to
+    /// chain off the *exact* completion (e.g. `PublishController` driving
+    /// the publish pipeline), prefer `commitAndPushAwait(message:)` which
+    /// reports phases through a callback and returns the resolved outcome.
     func commitAndPush(message: String) {
         guard !isBusy else { return }
         currentTask?.cancel()
         currentTask = Task { [weak self] in
             guard let self else { return }
+            _ = await runCommitAndPush(message: message, onPhase: nil)
+        }
+    }
+
+    /// Structured commit + push that returns once the push has either
+    /// succeeded, failed, or thrown. Replaces the old "spin while
+    /// `isBusy`" pattern from `PublishController` so we don't have a
+    /// 200ms polling delay between push completion and the next phase.
+    @discardableResult
+    func commitAndPushAwait(
+        message: String,
+        onPhase: ((Activity) -> Void)? = nil
+    ) async -> Outcome {
+        guard !isBusy else { return outcome }
+        currentTask?.cancel()
+        return await runCommitAndPush(message: message, onPhase: onPhase)
+    }
+
+    private func runCommitAndPush(
+        message: String,
+        onPhase: ((Activity) -> Void)?
+    ) async -> Outcome {
+        do {
+            activity = .committing
+            onPhase?(.committing)
+            _ = try await service.commitAll(message: message)
+            activity = .pushing
+            onPhase?(.pushing)
+            status = try await service.push()
+            let result: Outcome = .success(
+                "Committed + pushed to \(status.upstream ?? status.branch)."
+            )
+            outcome = result
+            activity = .idle
+            onPhase?(.idle)
+            return result
+        } catch {
+            let result: Outcome = .failure(describe(error))
+            outcome = result
             do {
-                activity = .committing
-                _ = try await service.commitAll(message: message)
-                activity = .pushing
-                status = try await service.push()
-                outcome = .success("Committed + pushed to \(status.upstream ?? status.branch).")
+                status = try await service.status()
             } catch {
-                outcome = .failure(describe(error))
-                do {
-                    status = try await service.status()
-                } catch {
-                    // Keep previously shown failure.
-                }
+                // Keep previously shown failure.
             }
             activity = .idle
+            onPhase?(.idle)
+            return result
         }
     }
 

@@ -9,7 +9,15 @@ struct SubtextApp: App {
     @State private var publish = PublishController()
 
     var body: some Scene {
-        Window("Subtext", id: "subtext-main") {
+        // `WindowGroup` (instead of single-instance `Window`) so the user
+        // can open multiple editor windows side-by-side via File > New
+        // Window. The `store`, `devServer`, `git`, and `publish` controllers
+        // are App-level `@State` so all windows share them — true per-window
+        // repo isolation would require lifting these into a `@SceneStorage`-
+        // driven Scene type (or using opaque Scene state). That's the path
+        // the plan outlines for "multi-window per repo"; leaving the seam
+        // here keeps the door open without forking the data layer today.
+        WindowGroup("Subtext", id: "subtext-main") {
             ContentView()
                 .environment(store)
                 .environment(devServer)

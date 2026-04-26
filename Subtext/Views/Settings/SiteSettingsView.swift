@@ -356,7 +356,7 @@ struct SiteHistoryPanel: View {
     @Environment(\.dismiss) private var dismiss
     @State private var entries: [BackupService.BackupEntry] = []
     @State private var loading = true
-    @State private var restoreTarget: BackupService.BackupEntry?
+    @State private var diffTarget: BackupService.BackupEntry?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -386,7 +386,7 @@ struct SiteHistoryPanel: View {
                     VStack(spacing: 8) {
                         ForEach(entries) { entry in
                             HistoryRow(entry: entry) {
-                                restoreTarget = entry
+                                diffTarget = entry
                             }
                         }
                     }
@@ -396,19 +396,16 @@ struct SiteHistoryPanel: View {
         }
         .frame(width: 520, height: 420)
         .task { await refresh() }
-        .alert(item: $restoreTarget) { entry in
-            Alert(
-                title: Text("Restore from backup?"),
-                message: Text("This will overwrite site.json. A backup of the current state will be saved first."),
-                primaryButton: .destructive(Text("Restore")) {
-                    Task {
-                        await store.restoreSite(from: entry.url)
-                        await refresh()
-                        dismiss()
-                    }
-                },
-                secondaryButton: .cancel()
-            )
+        .sheet(item: $diffTarget) { entry in
+            HistoryDiffSheet(
+                title: "site.json — backup vs current",
+                backup: entry,
+                liveFile: RepoConstants.siteFile
+            ) {
+                await store.restoreSite(from: entry.url)
+                await refresh()
+                dismiss()
+            }
         }
     }
 

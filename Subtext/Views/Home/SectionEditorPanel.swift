@@ -17,6 +17,11 @@ struct SectionEditorPanel: View {
                 .padding(20)
             }
         }
+        .focusable()
+        .onKeyPress(.escape) {
+            onClose()
+            return .handled
+        }
     }
 
     @ViewBuilder
@@ -105,6 +110,8 @@ struct SectionEditorPanel: View {
             ScrambleVisualEditor(visual: visualBinding())
         case .terminal:
             TerminalVisualEditor(visual: visualBinding())
+        case .clapper:
+            ClapperVisualEditor(visual: visualBinding())
         }
     }
 
@@ -161,6 +168,11 @@ struct CTAEditorPanel: View {
                 }
                 .padding(20)
             }
+        }
+        .focusable()
+        .onKeyPress(.escape) {
+            onClose()
+            return .handled
         }
     }
 }

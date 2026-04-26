@@ -7,7 +7,12 @@ struct ProjectHistoryPanel: View {
     @Environment(\.dismiss) private var dismiss
     @State private var entries: [BackupService.BackupEntry] = []
     @State private var loading = true
-    @State private var restoreTarget: BackupService.BackupEntry?
+    @State private var diffTarget: BackupService.BackupEntry?
+
+    private var liveURL: URL {
+        RepoConstants.projectsDirectory
+            .appending(path: fileName, directoryHint: .notDirectory)
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -44,7 +49,7 @@ struct ProjectHistoryPanel: View {
                         VStack(spacing: 8) {
                             ForEach(entries) { entry in
                                 HistoryRow(entry: entry) {
-                                    restoreTarget = entry
+                                    diffTarget = entry
                                 }
                             }
                         }
@@ -55,19 +60,16 @@ struct ProjectHistoryPanel: View {
         }
         .frame(width: 520, height: 480)
         .task { await refresh() }
-        .alert(item: $restoreTarget) { entry in
-            Alert(
-                title: Text("Restore from backup?"),
-                message: Text("This will overwrite \(fileName). A backup of the current state will be saved first."),
-                primaryButton: .destructive(Text("Restore")) {
-                    Task {
-                        await store.restoreProject(fileName: fileName, from: entry.url)
-                        await refresh()
-                        dismiss()
-                    }
-                },
-                secondaryButton: .cancel()
-            )
+        .sheet(item: $diffTarget) { entry in
+            HistoryDiffSheet(
+                title: "\(fileName) — backup vs current",
+                backup: entry,
+                liveFile: liveURL
+            ) {
+                await store.restoreProject(fileName: fileName, from: entry.url)
+                await refresh()
+                dismiss()
+            }
         }
     }
 

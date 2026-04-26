@@ -116,19 +116,29 @@ final class PublishController {
         }
         append("✓ Build succeeded.")
 
-        // 3. Commit.
+        // 3. Commit + push using a structured await — distinct phases are
+        //    surfaced via the `onPhase` callback so the UI strip flips from
+        //    "Committing…" to "Pushing…" exactly when the underlying git
+        //    activity transitions, not on a 200ms poll boundary.
         phase = .committing
         append("▸ Committing…")
-        git.commitAndPush(message: trimmed)
+        let result = await git.commitAndPushAwait(
+            message: trimmed,
+            onPhase: { [weak self] activity in
+                guard let self else { return }
+                switch activity {
+                case .committing:
+                    self.phase = .committing
+                case .pushing:
+                    self.phase = .pushing
+                    self.append("▸ Pushing to origin…")
+                case .idle, .loading:
+                    break
+                }
+            }
+        )
 
-        // 4. Poll the git controller until it finishes.
-        phase = .pushing
-        while git.isBusy {
-            try? await Task.sleep(for: .milliseconds(200))
-            if Task.isCancelled { return }
-        }
-
-        switch git.outcome {
+        switch result {
         case .success(let text):
             append("✓ \(text)")
             phase = .succeeded

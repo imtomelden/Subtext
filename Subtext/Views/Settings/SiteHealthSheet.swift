@@ -13,13 +13,14 @@ struct SiteHealthSheet: View {
     @Environment(\.dismiss) private var dismiss
 
     enum Tab: String, CaseIterable, Identifiable {
-        case orphans, broken, seo
+        case orphans, broken, links, seo
         var id: String { rawValue }
 
         var title: String {
             switch self {
             case .orphans: "Orphan images"
-            case .broken: "Broken references"
+            case .broken: "Broken images"
+            case .links: "Broken links"
             case .seo: "Project SEO"
             }
         }
@@ -88,6 +89,7 @@ struct SiteHealthSheet: View {
         let n: Int = switch tab {
         case .orphans: report.orphans.count
         case .broken: report.broken.count
+        case .links: report.linkIssues.count
         case .seo: report.seoIssues.values.reduce(0) { $0 + $1.count }
         }
         return n == 0 ? "" : "(\(n))"
@@ -102,6 +104,7 @@ struct SiteHealthSheet: View {
             switch selected {
             case .orphans: orphansList(report)
             case .broken: brokenList(report)
+            case .links: linksList(report)
             case .seo: seoList(report)
             }
         } else {
@@ -158,6 +161,56 @@ struct SiteHealthSheet: View {
                             .font(.callout.monospaced())
                             .textSelection(.enabled)
                         Spacer()
+                    }
+                    .padding(.vertical, 2)
+                }
+            }
+            .listStyle(.inset)
+        }
+    }
+
+    // MARK: - Links
+
+    @ViewBuilder
+    private func linksList(_ report: AssetAudit.AuditReport) -> some View {
+        if report.linkIssues.isEmpty {
+            emptyState(
+                icon: "checkmark.seal.fill",
+                text: "No broken links.",
+                detail: "Splash CTAs, project external URLs, in-page CTAs and markdown body links all look healthy."
+            )
+        } else {
+            List {
+                ForEach(report.linkIssues) { issue in
+                    HStack(alignment: .top, spacing: 10) {
+                        Image(systemName: issue.severity == .error ? "exclamationmark.circle.fill" : "exclamationmark.triangle.fill")
+                            .foregroundStyle(issue.severity == .error ? .red : Color.subtextWarning)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(issue.source)
+                                .font(.callout.weight(.medium))
+                            Text(issue.message)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            if !issue.href.isEmpty {
+                                Text(issue.href)
+                                    .font(.caption2.monospaced())
+                                    .foregroundStyle(.tertiary)
+                                    .lineLimit(1)
+                                    .truncationMode(.middle)
+                                    .textSelection(.enabled)
+                            }
+                        }
+                        Spacer()
+                        if let fileName = issue.fileName {
+                            Button {
+                                store.selectedProjectFileName = fileName
+                                dismiss()
+                            } label: {
+                                Image(systemName: "arrow.up.forward.app")
+                            }
+                            .buttonStyle(.borderless)
+                            .help("Open \(fileName)")
+                        }
                     }
                     .padding(.vertical, 2)
                 }
@@ -245,7 +298,7 @@ struct SiteHealthSheet: View {
         let result = await audit.audit(splash: splash, projects: projects)
         self.report = result
         let seoCount = result.seoIssues.values.reduce(0) { $0 + $1.count }
-        let total = result.orphans.count + result.broken.count + seoCount
+        let total = result.orphans.count + result.broken.count + result.linkIssues.count + seoCount
         store.recordSiteHealthIssueTotal(total)
     }
 }

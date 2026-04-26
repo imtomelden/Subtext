@@ -47,12 +47,10 @@ struct ExternalChangeBanner: View {
             .padding(.horizontal, 14)
             .padding(.vertical, 10)
             .background(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .fill(Color.subtextWarning.opacity(0.12))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .strokeBorder(Color.subtextWarning.opacity(0.35), lineWidth: 0.5)
-                    )
+                GlassSurface(prominence: .interactive, cornerRadius: 12) {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(Color.subtextWarning.opacity(0.16))
+                }
             )
             .padding(.horizontal, 18)
             .padding(.top, 10)

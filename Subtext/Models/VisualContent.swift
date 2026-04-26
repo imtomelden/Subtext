@@ -8,6 +8,7 @@ enum VisualContent: Equatable, Sendable {
     case speech(SpeechVisual)
     case scramble(ScrambleVisual)
     case terminal(TerminalVisual)
+    case clapper(ClapperVisual)
 
     /// Matches the strings used in `splash.json`'s `visual.type`.
     enum Kind: String, CaseIterable, Identifiable, Sendable {
@@ -16,6 +17,7 @@ enum VisualContent: Equatable, Sendable {
         case speech
         case scramble
         case terminal
+        case clapper
 
         var id: String { rawValue }
 
@@ -26,6 +28,7 @@ enum VisualContent: Equatable, Sendable {
             case .speech: "Speech"
             case .scramble: "Scramble"
             case .terminal: "Terminal"
+            case .clapper: "Clapper"
             }
         }
 
@@ -36,6 +39,7 @@ enum VisualContent: Equatable, Sendable {
             case .speech: "bubble.left.and.bubble.right.fill"
             case .scramble: "text.word.spacing"
             case .terminal: "terminal.fill"
+            case .clapper: "film"
             }
         }
     }
@@ -47,6 +51,7 @@ enum VisualContent: Equatable, Sendable {
         case .speech: .speech
         case .scramble: .scramble
         case .terminal: .terminal
+        case .clapper: .clapper
         }
     }
 
@@ -70,6 +75,8 @@ enum VisualContent: Equatable, Sendable {
             return .scramble(ScrambleVisual(words: []))
         case .terminal:
             return .terminal(TerminalVisual(title: "", lines: []))
+        case .clapper:
+            return .clapper(ClapperVisual(scene: "", take: "", roll: "", loc: ""))
         }
     }
 }
@@ -146,6 +153,13 @@ struct TerminalVisual: Equatable, Codable, Sendable {
     var lines: [String]
 }
 
+struct ClapperVisual: Equatable, Codable, Sendable {
+    var scene: String
+    var take: String
+    var roll: String
+    var loc: String
+}
+
 // MARK: - Codable
 
 extension VisualContent: Codable {
@@ -154,7 +168,7 @@ extension VisualContent: Codable {
     }
 
     private enum TypeTag: String, Codable {
-        case photo, ticket, speech, scramble, terminal
+        case photo, ticket, speech, scramble, terminal, clapper
     }
 
     init(from decoder: Decoder) throws {
@@ -173,6 +187,8 @@ extension VisualContent: Codable {
             self = .scramble(try single.decode(ScrambleVisualWire.self).toModel())
         case .terminal:
             self = .terminal(try single.decode(TerminalVisualWire.self).toModel())
+        case .clapper:
+            self = .clapper(try single.decode(ClapperVisualWire.self).toModel())
         }
     }
 
@@ -188,6 +204,8 @@ extension VisualContent: Codable {
             try ScrambleVisualWire(model: s).encode(to: encoder)
         case .terminal(let t):
             try TerminalVisualWire(model: t).encode(to: encoder)
+        case .clapper(let c):
+            try ClapperVisualWire(model: c).encode(to: encoder)
         }
     }
 }
@@ -277,4 +295,54 @@ private struct TerminalVisualWire: Codable {
     var lines: [String]
     init(model: TerminalVisual) { self.title = model.title; self.lines = model.lines }
     func toModel() -> TerminalVisual { TerminalVisual(title: title, lines: lines) }
+}
+
+private struct ClapperVisualWire: Codable {
+    var type: String = "clapper"
+    var scene: String
+    var take: String
+    var roll: String
+    var loc: String
+
+    enum CodingKeys: String, CodingKey {
+        case type
+        case scene
+        case take
+        case roll
+        case loc
+        case date
+    }
+
+    init(model: ClapperVisual) {
+        self.scene = model.scene
+        self.take = model.take
+        self.roll = model.roll
+        self.loc = model.loc
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.type = try c.decodeIfPresent(String.self, forKey: .type) ?? "clapper"
+        self.scene = try c.decodeIfPresent(String.self, forKey: .scene) ?? ""
+        self.take = try c.decodeIfPresent(String.self, forKey: .take) ?? ""
+        self.roll = try c.decodeIfPresent(String.self, forKey: .roll) ?? ""
+        if let l = try c.decodeIfPresent(String.self, forKey: .loc) {
+            self.loc = l
+        } else {
+            self.loc = try c.decodeIfPresent(String.self, forKey: .date) ?? ""
+        }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(type, forKey: .type)
+        try c.encode(scene, forKey: .scene)
+        try c.encode(take, forKey: .take)
+        try c.encode(roll, forKey: .roll)
+        try c.encode(loc, forKey: .loc)
+    }
+
+    func toModel() -> ClapperVisual {
+        ClapperVisual(scene: scene, take: take, roll: roll, loc: loc)
+    }
 }

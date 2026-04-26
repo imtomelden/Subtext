@@ -30,16 +30,17 @@ struct CommandPalette: View {
     @FocusState private var fieldFocused: Bool
 
     var body: some View {
-        VStack(spacing: 0) {
-            searchField
-                .padding(14)
+        GlassSurface(prominence: .thick, cornerRadius: SubtextUI.Glass.shellCornerRadius) {
+            VStack(spacing: 0) {
+                searchField
+                    .padding(14)
 
-            Divider()
+                Divider()
 
-            resultsList
+                resultsList
+            }
         }
         .frame(width: 640, height: 440)
-        .background(.regularMaterial)
         .onAppear { fieldFocused = true }
         .onKeyPress(.escape) {
             dismiss()
