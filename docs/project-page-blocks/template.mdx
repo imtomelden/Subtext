@@ -1,22 +1,28 @@
 ---
 title: "Template Project"
 slug: template-project
-description: "Project template with the standard five-block structure."
+description: "Project template with layout blocks and content blocks in one ordered list."
 date: 2026-04-25
-category: "council"
+ownership: work
 tags:
   - template
 thumbnail: /images/projects/template/before.jpg
-headerImage: /images/projects/template/before.jpg
-draft: true
 blocks:
+  - type: pageHero
+    eyebrow: "Pilot"
+    title: "Template initiative"
+    subtitle: "One paragraph under the title."
+  - type: headerImage
+    src: /images/projects/template/before.jpg
+    alt: "Before view of current site conditions."
+  - type: body
   - type: projectSnapshot
     projectTitle: "Template Project"
     summary: "One-line summary of project intent."
     status: planned
     ownerTeam: "Delivery Team"
-    timelineStart: 2026-05-01
-    timelineTargetCompletion: 2026-11-30
+    timelineStart: "2026-05-01"
+    timelineTargetCompletion: "2026-11-30"
     budgetHeadline: "Optional public budget summary"
   - type: keyStats
     title: "Key stats"
@@ -33,19 +39,21 @@ blocks:
         value: "0"
         unit: "GBP"
         lastUpdated: 2026-04-25
-  - type: goalsMetrics
-    title: "Goals & success metrics"
-    items:
-      - goal: "Improve service response speed"
-        successMeasure: "Average response time"
-        baseline: "6 days"
-        target: "2 days"
-        reportingCadence: "Monthly"
-      - goal: "Increase resident satisfaction"
-        successMeasure: "Satisfaction score"
-        baseline: "62%"
-        target: "80%"
-        reportingCadence: "Quarterly"
+  - type: caseStudy
+    role: "Product lead"
+    duration: "6 months"
+    challenge: "What problem are we solving?"
+    approach: "How we went about it."
+    outcome: "What changed for users."
+  - type: videoShowcase
+    variant: cinema
+    title: "Walkthrough"
+    source:
+      kind: youtube
+      videoId: dQw4w9WgXcQ
+  - type: videoDetails
+    runtime: "3 min"
+    platform: "YouTube"
   - type: quote
     quote: "This project addresses a long-standing need in the ward."
     attributionName: "Sample Resident"
@@ -60,8 +68,18 @@ blocks:
         credit: "City Council"
         date: 2026-04-01
         location: "Ward Centre"
+  - type: cta
+    title: "Next steps"
+    description: "Where to go from here."
+    links:
+      - label: "Contact"
+        href: "/about"
+  - type: tagList
+  - type: relatedProjects
+externalUrl: "https://example.com"
+draft: true
 ---
 
-## Context
+## Main body
 
-Add narrative detail, delivery updates, and links to background evidence.
+The **body** block above inserts this section in page order. Add narrative, delivery updates, and links to background evidence.

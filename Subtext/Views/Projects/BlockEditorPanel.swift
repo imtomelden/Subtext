@@ -50,8 +50,6 @@ struct BlockEditorPanel: View {
             KeyStatsBlockEditor(block: keyStatsBinding)
         case .goalsMetrics:
             GoalsMetricsBlockEditor(block: goalsMetricsBinding)
-        case .narrative:
-            NarrativeBlockEditor()
         case .quote:
             QuoteBlockEditor(block: quoteBinding)
         case .mediaGallery:
@@ -60,6 +58,22 @@ struct BlockEditorPanel: View {
             VideoShowcaseBlockEditor(block: videoShowcaseBinding)
         case .cta:
             CtaBlockEditor(block: ctaBinding)
+        case .body:
+            BodyBlockEditor()
+        case .pageHero:
+            PageHeroBlockEditor(block: pageHeroBinding)
+        case .headerImage:
+            HeaderImageBlockEditor(block: headerImageBinding)
+        case .caseStudy:
+            CaseStudyBlockEditor(block: caseStudyBinding)
+        case .videoDetails:
+            VideoDetailsBlockEditor(block: videoDetailsBinding)
+        case .externalLink:
+            ExternalLinkBlockEditor(block: externalLinkBinding)
+        case .tagList:
+            TagListBlockEditor()
+        case .relatedProjects:
+            RelatedProjectsBlockEditor()
         }
     }
 
@@ -151,6 +165,56 @@ struct BlockEditorPanel: View {
                 return CTABlock(title: "", description: nil, links: [])
             },
             set: { block = .cta($0) }
+        )
+    }
+
+    private var pageHeroBinding: Binding<PageHeroBlock> {
+        Binding(
+            get: {
+                if case .pageHero(let b) = block { return b }
+                return PageHeroBlock()
+            },
+            set: { block = .pageHero($0) }
+        )
+    }
+
+    private var headerImageBinding: Binding<HeaderImageBlock> {
+        Binding(
+            get: {
+                if case .headerImage(let b) = block { return b }
+                return HeaderImageBlock(src: "", alt: nil)
+            },
+            set: { block = .headerImage($0) }
+        )
+    }
+
+    private var caseStudyBinding: Binding<CaseStudyBlock> {
+        Binding(
+            get: {
+                if case .caseStudy(let b) = block { return b }
+                return CaseStudyBlock(challenge: nil, approach: nil, outcome: nil, role: nil, duration: nil)
+            },
+            set: { block = .caseStudy($0) }
+        )
+    }
+
+    private var videoDetailsBinding: Binding<VideoDetailsBlock> {
+        Binding(
+            get: {
+                if case .videoDetails(let b) = block { return b }
+                return VideoDetailsBlock(runtime: nil, platform: nil, transcriptUrl: nil, credits: [])
+            },
+            set: { block = .videoDetails($0) }
+        )
+    }
+
+    private var externalLinkBinding: Binding<ExternalLinkBlock> {
+        Binding(
+            get: {
+                if case .externalLink(let b) = block { return b }
+                return ExternalLinkBlock(href: "", label: nil)
+            },
+            set: { block = .externalLink($0) }
         )
     }
 }

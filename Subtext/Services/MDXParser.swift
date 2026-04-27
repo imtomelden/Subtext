@@ -17,12 +17,9 @@ struct LegacyBlockMigration {
         }
     }
 
-    // Used by preflight repair to unblock startup content schema.
+    /// `mediaGrid` is the on-disk alias; `mediaGallery` is the canonical type in the model.
     private static let preflightLegacyTypeMap: [String: String] = [
-        "projectSnapshot": "narrative",
-        "keyStats": "statCards",
-        "goalsMetrics": "narrative",
-        "mediaGallery": "mediaGrid"
+        "mediaGallery": "mediaGrid",
     ]
 
     // Used by parser so aliases decode to one internal model shape.
@@ -153,7 +150,9 @@ enum MDXParser {
     static func parse(_ raw: String, fileName: String) throws -> ProjectDocument {
         let (yamlBlock, body) = try splitFrontmatter(raw, fileName: fileName)
         let yaml = try YAMLDecoder.decode(yamlBlock, fileName: fileName)
-        let front = try buildFrontmatter(from: yaml, fileName: fileName)
+        var front = try buildFrontmatter(from: yaml, fileName: fileName)
+        synthesiseLayoutBlocksIfNeeded(&front)
+        syncTopLevelFromLayoutBlocks(&front)
         return ProjectDocument(fileName: fileName, frontmatter: front, body: body)
     }
 
@@ -222,8 +221,8 @@ enum MDXParser {
 
         let blocks: [ProjectBlock]
         if case .sequence(let seq) = map["blocks"] ?? .null {
-            blocks = try seq.enumerated().map { idx, node in
-                try parseBlock(node, index: idx, fileName: fileName)
+            blocks = try seq.enumerated().compactMap { idx, node in
+                try parseBlockIfPresent(node, index: idx, fileName: fileName)
             }
         } else {
             blocks = []
@@ -255,7 +254,90 @@ enum MDXParser {
         )
     }
 
-    private static func parseBlock(_ node: YAMLNode, index: Int, fileName: String) throws -> ProjectBlock {
+    /// When the MDX has no `blocks:` (or no layout blocks), build the default order so legacy
+    /// top-level frontmatter and content blocks match the pre-layout-block page.
+    private static func synthesiseLayoutBlocksIfNeeded(_ front: inout ProjectFrontmatter) {
+        let hasLayout = front.blocks.contains { $0.isLayoutBlock }
+        if hasLayout {
+            return
+        }
+
+        var out: [ProjectBlock] = []
+        if let hero = front.hero, !hero.isEmpty {
+            out.append(.pageHero(PageHeroBlock(eyebrow: hero.eyebrow, title: hero.title, subtitle: hero.subtitle)))
+        }
+        if let hi = front.headerImage, !hi.isEmpty {
+            out.append(.headerImage(HeaderImageBlock(src: hi, alt: nil)))
+        }
+        out.append(.body(BodyBlock()))
+        out.append(contentsOf: front.blocks)
+        if caseStudySourcePresent(front) {
+            out.append(.caseStudy(CaseStudyBlock(
+                challenge: front.challenge,
+                approach: front.approach,
+                outcome: front.outcome,
+                role: front.role,
+                duration: front.duration
+            )))
+        }
+        if let vm = front.videoMeta, !vm.isEmpty {
+            out.append(.videoDetails(VideoDetailsBlock(
+                runtime: vm.runtime,
+                platform: vm.platform,
+                transcriptUrl: vm.transcriptUrl,
+                credits: vm.credits
+            )))
+        }
+        if let ext = front.externalUrl, !ext.isEmpty {
+            out.append(.externalLink(ExternalLinkBlock(href: ext, label: nil)))
+        }
+        out.append(.tagList(TagListBlock()))
+        out.append(.relatedProjects(RelatedProjectsBlock()))
+        front.blocks = out
+    }
+
+    /// When a layout block exists, `MDXSerialiser` omits the same data from the
+    /// top-level YAML (the block is canonical). After parsing, mirror the block
+    /// onto the top-level `ProjectFrontmatter` fields so in-memory state matches
+    /// a re-parse of our serialised output.
+    private static func syncTopLevelFromLayoutBlocks(_ front: inout ProjectFrontmatter) {
+        for block in front.blocks {
+            switch block {
+            case .caseStudy(let b):
+                front.challenge = b.challenge
+                front.approach = b.approach
+                front.outcome = b.outcome
+                front.role = b.role
+                front.duration = b.duration
+            case .videoDetails(let b):
+                let meta = ProjectFrontmatter.VideoMeta(
+                    runtime: b.runtime,
+                    platform: b.platform,
+                    transcriptUrl: b.transcriptUrl,
+                    credits: b.credits
+                )
+                front.videoMeta = meta.isEmpty ? nil : meta
+            case .pageHero(let b):
+                let h = ProjectFrontmatter.Hero(
+                    eyebrow: b.eyebrow,
+                    title: b.title,
+                    subtitle: b.subtitle
+                )
+                front.hero = h.isEmpty ? nil : h
+            case .headerImage(let b):
+                if !b.src.isEmpty { front.headerImage = b.src }
+            default:
+                break
+            }
+        }
+    }
+
+    private static func caseStudySourcePresent(_ front: ProjectFrontmatter) -> Bool {
+        let fields = [front.challenge, front.approach, front.outcome, front.role, front.duration]
+        return fields.contains { ($0 ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false }
+    }
+
+    private static func parseBlockIfPresent(_ node: YAMLNode, index: Int, fileName: String) throws -> ProjectBlock? {
         guard case .mapping(let map) = node else {
             throw ParseError.invalidBlock(fileName: fileName, reason: "Block #\(index + 1) is not a mapping.")
         }
@@ -263,6 +345,17 @@ enum MDXParser {
             throw ParseError.invalidBlock(fileName: fileName, reason: "Block #\(index + 1) missing type.")
         }
         let type = LegacyBlockMigration.parserCanonicalType(for: rawType)
+        if type == "narrative" {
+            return nil
+        }
+        return try parseBlock(node, index: index, fileName: fileName, knownType: type)
+    }
+
+    private static func parseBlock(_ node: YAMLNode, index: Int, fileName: String, knownType: String) throws -> ProjectBlock {
+        guard case .mapping(let map) = node else {
+            throw ParseError.invalidBlock(fileName: fileName, reason: "Block #\(index + 1) is not a mapping.")
+        }
+        let type = knownType
 
         switch type {
         case "projectSnapshot":
@@ -310,8 +403,51 @@ enum MDXParser {
                 items: items
             ))
 
-        case "narrative":
-            return .narrative(NarrativeBlock())
+        case "body":
+            return .body(BodyBlock())
+
+        case "pageHero":
+            return .pageHero(PageHeroBlock(
+                eyebrow: map["eyebrow"]?.stringValue,
+                title: map["title"]?.stringValue,
+                subtitle: map["subtitle"]?.stringValue
+            ))
+
+        case "headerImage":
+            return .headerImage(HeaderImageBlock(
+                src: map["src"]?.stringValue ?? "",
+                alt: map["alt"]?.stringValue
+            ))
+
+        case "caseStudy":
+            return .caseStudy(CaseStudyBlock(
+                challenge: map["challenge"]?.stringValue,
+                approach: map["approach"]?.stringValue,
+                outcome: map["outcome"]?.stringValue,
+                role: map["role"]?.stringValue,
+                duration: map["duration"]?.stringValue
+            ))
+
+        case "videoDetails":
+            let credits = (map["credits"]?.sequenceValue ?? []).compactMap { $0.stringValue }
+            return .videoDetails(VideoDetailsBlock(
+                runtime: map["runtime"]?.stringValue,
+                platform: map["platform"]?.stringValue,
+                transcriptUrl: map["transcriptUrl"]?.stringValue,
+                credits: credits
+            ))
+
+        case "externalLink":
+            return .externalLink(ExternalLinkBlock(
+                href: map["href"]?.stringValue ?? "",
+                label: map["label"]?.stringValue
+            ))
+
+        case "tagList":
+            return .tagList(TagListBlock())
+
+        case "relatedProjects":
+            return .relatedProjects(RelatedProjectsBlock())
 
         case "quote":
             return .quote(QuoteBlock(

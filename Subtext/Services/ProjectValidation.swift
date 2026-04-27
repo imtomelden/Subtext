@@ -72,6 +72,20 @@ enum ProjectValidator {
                         message: "CTA block title is required."
                     ))
                 }
+            case .headerImage(let img):
+                if img.src.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    issues.append(.init(
+                        field: "blocks[\(index)].src",
+                        message: "Header image block needs an image path."
+                    ))
+                }
+            case .externalLink(let ext):
+                if ext.href.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    issues.append(.init(
+                        field: "blocks[\(index)].href",
+                        message: "External link block needs a URL."
+                    ))
+                }
             case .quote(let quote):
                 if quote.quote.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                     issues.append(.init(

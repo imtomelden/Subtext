@@ -5,22 +5,47 @@ enum ProjectBlock: Equatable, Sendable, Identifiable {
     case projectSnapshot(ProjectSnapshotBlock)
     case keyStats(KeyStatsBlock)
     case goalsMetrics(GoalsMetricsBlock)
-    case narrative(NarrativeBlock)
     case quote(QuoteBlock)
     case mediaGallery(MediaGalleryBlock)
     case videoShowcase(VideoShowcaseBlock)
     case cta(CTABlock)
+    // Layout blocks (page chrome as ordered cards)
+    case body(BodyBlock)
+    case pageHero(PageHeroBlock)
+    case headerImage(HeaderImageBlock)
+    case caseStudy(CaseStudyBlock)
+    case videoDetails(VideoDetailsBlock)
+    case externalLink(ExternalLinkBlock)
+    case tagList(TagListBlock)
+    case relatedProjects(RelatedProjectsBlock)
 
     var id: UUID {
         switch self {
         case .projectSnapshot(let b): b.id
         case .keyStats(let b): b.id
         case .goalsMetrics(let b): b.id
-        case .narrative(let b): b.id
         case .quote(let b): b.id
         case .mediaGallery(let b): b.id
         case .videoShowcase(let b): b.id
         case .cta(let b): b.id
+        case .body(let b): b.id
+        case .pageHero(let b): b.id
+        case .headerImage(let b): b.id
+        case .caseStudy(let b): b.id
+        case .videoDetails(let b): b.id
+        case .externalLink(let b): b.id
+        case .tagList(let b): b.id
+        case .relatedProjects(let b): b.id
+        }
+    }
+
+    /// True for blocks that participate in the “layout” ring (drives default synthesis when absent).
+    var isLayoutBlock: Bool {
+        switch self {
+        case .body, .pageHero, .headerImage, .caseStudy, .videoDetails, .externalLink, .tagList, .relatedProjects:
+            return true
+        default:
+            return false
         }
     }
 
@@ -28,11 +53,18 @@ enum ProjectBlock: Equatable, Sendable, Identifiable {
         case projectSnapshot
         case keyStats
         case goalsMetrics
-        case narrative
         case quote
         case mediaGallery
         case videoShowcase
         case cta
+        case body
+        case pageHero
+        case headerImage
+        case caseStudy
+        case videoDetails
+        case externalLink
+        case tagList
+        case relatedProjects
 
         var id: String { rawValue }
 
@@ -41,11 +73,18 @@ enum ProjectBlock: Equatable, Sendable, Identifiable {
             case .projectSnapshot: "Project Snapshot"
             case .keyStats: "Key Stats"
             case .goalsMetrics: "Goals & Success Metrics"
-            case .narrative: "Narrative"
             case .quote: "Pull Quote"
             case .mediaGallery: "Media Gallery"
             case .videoShowcase: "Video Showcase"
             case .cta: "Call to Action"
+            case .body: "MDX body"
+            case .pageHero: "Page hero"
+            case .headerImage: "Header image"
+            case .caseStudy: "Case study"
+            case .videoDetails: "Video details"
+            case .externalLink: "External link"
+            case .tagList: "Tag list"
+            case .relatedProjects: "Related projects"
             }
         }
 
@@ -54,11 +93,18 @@ enum ProjectBlock: Equatable, Sendable, Identifiable {
             case .projectSnapshot: "doc.text.magnifyingglass"
             case .keyStats: "chart.bar.doc.horizontal"
             case .goalsMetrics: "target"
-            case .narrative: "text.alignleft"
             case .quote: "quote.opening"
             case .mediaGallery: "photo.on.rectangle.angled"
             case .videoShowcase: "play.rectangle.fill"
             case .cta: "hand.point.up.braille.fill"
+            case .body: "doc.plaintext"
+            case .pageHero: "sparkles"
+            case .headerImage: "photo"
+            case .caseStudy: "list.bullet.rectangle"
+            case .videoDetails: "film"
+            case .externalLink: "link"
+            case .tagList: "tag"
+            case .relatedProjects: "rectangle.grid.1x2"
             }
         }
 
@@ -68,11 +114,18 @@ enum ProjectBlock: Equatable, Sendable, Identifiable {
             case .projectSnapshot: (0.33, 0.63, 0.96)
             case .keyStats: (0.55, 0.45, 0.95)
             case .goalsMetrics: (0.34, 0.78, 0.55)
-            case .narrative: (0.36, 0.83, 0.64)
             case .quote: (0.45, 0.70, 0.90)
             case .mediaGallery: (0.95, 0.55, 0.70)
             case .videoShowcase: (0.95, 0.65, 0.30)
             case .cta: (0.95, 0.80, 0.35)
+            case .body: (0.40, 0.82, 0.68)
+            case .pageHero: (0.55, 0.75, 0.98)
+            case .headerImage: (0.90, 0.60, 0.45)
+            case .caseStudy: (0.50, 0.85, 0.90)
+            case .videoDetails: (0.75, 0.55, 0.95)
+            case .externalLink: (0.45, 0.78, 0.55)
+            case .tagList: (0.65, 0.70, 0.85)
+            case .relatedProjects: (0.85, 0.50, 0.55)
             }
         }
     }
@@ -82,11 +135,18 @@ enum ProjectBlock: Equatable, Sendable, Identifiable {
         case .projectSnapshot: .projectSnapshot
         case .keyStats: .keyStats
         case .goalsMetrics: .goalsMetrics
-        case .narrative: .narrative
         case .quote: .quote
         case .mediaGallery: .mediaGallery
         case .videoShowcase: .videoShowcase
         case .cta: .cta
+        case .body: .body
+        case .pageHero: .pageHero
+        case .headerImage: .headerImage
+        case .caseStudy: .caseStudy
+        case .videoDetails: .videoDetails
+        case .externalLink: .externalLink
+        case .tagList: .tagList
+        case .relatedProjects: .relatedProjects
         }
     }
 
@@ -98,8 +158,6 @@ enum ProjectBlock: Equatable, Sendable, Identifiable {
             return stats.items.map { "\($0.label): \($0.value)\($0.unit.map { " \($0)" } ?? "")" }.joined(separator: "  •  ")
         case .goalsMetrics(let goals):
             return goals.items.map(\.goal).joined(separator: "  •  ")
-        case .narrative:
-            return "(Narrative continues from the body markdown)"
         case .quote(let q):
             return q.quote
         case .mediaGallery(let m):
@@ -116,6 +174,22 @@ enum ProjectBlock: Equatable, Sendable, Identifiable {
             }
         case .cta(let c):
             return c.title
+        case .body:
+            return "Renders the MDX body"
+        case .pageHero(let h):
+            return [h.eyebrow, h.title, h.subtitle].compactMap { $0 }.first.map { $0 } ?? "Hero"
+        case .headerImage(let i):
+            return i.src.isEmpty ? "No image" : i.src
+        case .caseStudy(let c):
+            return [c.challenge, c.role].compactMap { $0 }.first.map { $0 } ?? "Case study"
+        case .videoDetails(let v):
+            return [v.runtime, v.platform].compactMap { $0 }.joined(separator: " · ")
+        case .externalLink(let e):
+            return e.href.isEmpty ? "No URL" : e.href
+        case .tagList:
+            return "Project tags"
+        case .relatedProjects:
+            return "Related projects (auto)"
         }
     }
 
@@ -157,7 +231,6 @@ enum ProjectBlock: Equatable, Sendable, Identifiable {
                 )
             ]
         ))
-        case .narrative: .narrative(NarrativeBlock())
         case .quote: .quote(QuoteBlock(
             quote: "",
             attributionName: nil,
@@ -182,15 +255,79 @@ enum ProjectBlock: Equatable, Sendable, Identifiable {
             description: "Add a destination for this project.",
             links: [CTABlock.Link(label: "Learn more", href: "/projects")]
         ))
+        case .body: .body(BodyBlock())
+        case .pageHero: .pageHero(PageHeroBlock(eyebrow: nil, title: nil, subtitle: nil))
+        case .headerImage: .headerImage(HeaderImageBlock(src: "", alt: nil))
+        case .caseStudy: .caseStudy(CaseStudyBlock(
+            challenge: nil, approach: nil, outcome: nil, role: nil, duration: nil
+        ))
+        case .videoDetails: .videoDetails(VideoDetailsBlock(
+            runtime: nil, platform: nil, transcriptUrl: nil, credits: []
+        ))
+        case .externalLink: .externalLink(ExternalLinkBlock(href: "", label: nil))
+        case .tagList: .tagList(TagListBlock())
+        case .relatedProjects: .relatedProjects(RelatedProjectsBlock())
         }
     }
 }
 
-// MARK: - Block payloads
+// MARK: - Layout block payloads
 
-struct NarrativeBlock: Equatable, Sendable {
+struct BodyBlock: Equatable, Sendable {
     var id: UUID = UUID()
 }
+
+struct PageHeroBlock: Equatable, Sendable {
+    var id: UUID = UUID()
+    var eyebrow: String?
+    var title: String?
+    var subtitle: String?
+
+    var isEmpty: Bool {
+        (eyebrow ?? "").isEmpty
+            && (title ?? "").isEmpty
+            && (subtitle ?? "").isEmpty
+    }
+}
+
+struct HeaderImageBlock: Equatable, Sendable {
+    var id: UUID = UUID()
+    var src: String
+    var alt: String?
+}
+
+struct CaseStudyBlock: Equatable, Sendable {
+    var id: UUID = UUID()
+    var challenge: String?
+    var approach: String?
+    var outcome: String?
+    var role: String?
+    var duration: String?
+}
+
+struct VideoDetailsBlock: Equatable, Sendable {
+    var id: UUID = UUID()
+    var runtime: String?
+    var platform: String?
+    var transcriptUrl: String?
+    var credits: [String]
+}
+
+struct ExternalLinkBlock: Equatable, Sendable {
+    var id: UUID = UUID()
+    var href: String
+    var label: String?
+}
+
+struct TagListBlock: Equatable, Sendable {
+    var id: UUID = UUID()
+}
+
+struct RelatedProjectsBlock: Equatable, Sendable {
+    var id: UUID = UUID()
+}
+
+// MARK: - Block payloads
 
 struct QuoteBlock: Equatable, Sendable {
     var id: UUID = UUID()
@@ -348,18 +485,72 @@ extension ProjectBlock {
         case (.projectSnapshot(let l), .projectSnapshot(let r)): l == r
         case (.keyStats(let l), .keyStats(let r)): l == r
         case (.goalsMetrics(let l), .goalsMetrics(let r)): l == r
-        case (.narrative(let l), .narrative(let r)): l == r
         case (.quote(let l), .quote(let r)): l == r
         case (.mediaGallery(let l), .mediaGallery(let r)): l == r
         case (.videoShowcase(let l), .videoShowcase(let r)): l == r
         case (.cta(let l), .cta(let r)): l == r
+        case (.body(let l), .body(let r)): l == r
+        case (.pageHero(let l), .pageHero(let r)): l == r
+        case (.headerImage(let l), .headerImage(let r)): l == r
+        case (.caseStudy(let l), .caseStudy(let r)): l == r
+        case (.videoDetails(let l), .videoDetails(let r)): l == r
+        case (.externalLink(let l), .externalLink(let r)): l == r
+        case (.tagList(let l), .tagList(let r)): l == r
+        case (.relatedProjects(let l), .relatedProjects(let r)): l == r
         default: false
         }
     }
 }
 
-extension NarrativeBlock {
-    static func == (lhs: NarrativeBlock, rhs: NarrativeBlock) -> Bool { true }
+extension BodyBlock {
+    static func == (lhs: BodyBlock, rhs: BodyBlock) -> Bool { true }
+}
+
+extension PageHeroBlock {
+    static func == (lhs: PageHeroBlock, rhs: PageHeroBlock) -> Bool {
+        lhs.eyebrow == rhs.eyebrow
+            && lhs.title == rhs.title
+            && lhs.subtitle == rhs.subtitle
+    }
+}
+
+extension HeaderImageBlock {
+    static func == (lhs: HeaderImageBlock, rhs: HeaderImageBlock) -> Bool {
+        lhs.src == rhs.src && lhs.alt == rhs.alt
+    }
+}
+
+extension CaseStudyBlock {
+    static func == (lhs: CaseStudyBlock, rhs: CaseStudyBlock) -> Bool {
+        lhs.challenge == rhs.challenge
+            && lhs.approach == rhs.approach
+            && lhs.outcome == rhs.outcome
+            && lhs.role == rhs.role
+            && lhs.duration == rhs.duration
+    }
+}
+
+extension VideoDetailsBlock {
+    static func == (lhs: VideoDetailsBlock, rhs: VideoDetailsBlock) -> Bool {
+        lhs.runtime == rhs.runtime
+            && lhs.platform == rhs.platform
+            && lhs.transcriptUrl == rhs.transcriptUrl
+            && lhs.credits == rhs.credits
+    }
+}
+
+extension ExternalLinkBlock {
+    static func == (lhs: ExternalLinkBlock, rhs: ExternalLinkBlock) -> Bool {
+        lhs.href == rhs.href && lhs.label == rhs.label
+    }
+}
+
+extension TagListBlock {
+    static func == (lhs: TagListBlock, rhs: TagListBlock) -> Bool { true }
+}
+
+extension RelatedProjectsBlock {
+    static func == (lhs: RelatedProjectsBlock, rhs: RelatedProjectsBlock) -> Bool { true }
 }
 
 extension QuoteBlock {

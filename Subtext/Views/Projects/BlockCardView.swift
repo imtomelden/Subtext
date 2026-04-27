@@ -2,12 +2,13 @@ import SwiftUI
 
 struct BlockCardView: View {
     let block: ProjectBlock
+    var reorderControls: AnyView? = nil
     var onEdit: () -> Void
     var onDelete: () -> Void
     @State private var confirmDelete = false
 
     var body: some View {
-        DraggableCard {
+        DraggableCard(reorderControls: reorderControls) {
             blockPill
         } content: {
             HStack(alignment: .top, spacing: 10) {
@@ -68,6 +69,8 @@ struct BlockCardView: View {
         switch block {
         case .mediaGallery(let media):
             return media.items.first?.src
+        case .headerImage(let h):
+            return h.src
         case .videoShowcase(let video):
             switch video.source {
             case .youtube, .vimeo:

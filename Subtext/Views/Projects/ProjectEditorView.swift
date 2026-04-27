@@ -19,7 +19,6 @@ struct ProjectEditorView: View {
     @State private var heroExpanded = false
     @State private var didLoadDisclosureState = false
     @State private var slugManuallyEdited = false
-    @State private var draggingBlockID: UUID?
     @State private var showSourcePreview = false
     @State private var editorMode: EditorMode = .split
     @State private var bodySelection: NSRange = NSRange(location: 0, length: 0)
@@ -459,7 +458,7 @@ struct ProjectEditorView: View {
                         .background(.quaternary.opacity(0.4), in: Capsule())
                 }
                 if document.frontmatter.blocks.count > 1 {
-                    Label("Drag to reorder", systemImage: "line.3.horizontal")
+                    Label("Use chevrons or ⌘↑/⌘↓ to reorder", systemImage: "chevron.up.chevron.down")
                         .labelStyle(.titleAndIcon)
                         .font(.caption)
                         .foregroundStyle(.tertiary)
@@ -481,23 +480,17 @@ struct ProjectEditorView: View {
                         .strokeBorder(.tertiary, style: StrokeStyle(lineWidth: 1, dash: [4]))
                 )
             } else {
-                ForEach(document.frontmatter.blocks) { block in
-                    BlockCardView(block: block) {
-                        store.editingBlockID = block.id
-                    } onDelete: {
-                        deleteBlock(block)
-                    }
-                    .onDrag {
-                        draggingBlockID = block.id
-                        return NSItemProvider(object: block.id.uuidString as NSString)
-                    }
-                    .onDrop(
-                        of: [.text],
-                        delegate: BlockDropDelegate(
-                            targetID: block.id,
-                            draggingID: $draggingBlockID,
-                            blocks: $document.frontmatter.blocks
-                        )
+                ReorderableVStack(
+                    items: document.frontmatter.blocks,
+                    spacing: 10
+                ) { from, to in
+                    document.frontmatter.blocks.move(fromOffsets: from, toOffset: to)
+                } row: { block, controls in
+                    BlockCardView(
+                        block: block,
+                        reorderControls: controls,
+                        onEdit: { store.editingBlockID = block.id },
+                        onDelete: { deleteBlock(block) }
                     )
                 }
             }
@@ -711,28 +704,6 @@ struct ProjectEditorView: View {
             .joined(separator: "-")
     }
 
-}
-
-private struct BlockDropDelegate: DropDelegate {
-    let targetID: UUID
-    @Binding var draggingID: UUID?
-    @Binding var blocks: [ProjectBlock]
-
-    func dropEntered(info: DropInfo) {
-        guard let draggingID, draggingID != targetID else { return }
-        guard let from = blocks.firstIndex(where: { $0.id == draggingID }) else { return }
-        guard let to = blocks.firstIndex(where: { $0.id == targetID }) else { return }
-        if from != to {
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.82)) {
-                blocks.move(fromOffsets: IndexSet(integer: from), toOffset: from < to ? to + 1 : to)
-            }
-        }
-    }
-
-    func performDrop(info: DropInfo) -> Bool {
-        draggingID = nil
-        return true
-    }
 }
 
 /// Renders markdown as the user types, with a small debounce so large

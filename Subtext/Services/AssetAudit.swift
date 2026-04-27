@@ -168,6 +168,8 @@ actor AssetAudit {
         switch block {
         case .mediaGallery(let m):
             for item in m.items { addIfAsset(item.src, into: &set) }
+        case .headerImage(let h):
+            addIfAsset(h.src, into: &set)
         case .videoShowcase(let v):
             switch v.source {
             case .youtube, .vimeo:
@@ -180,7 +182,8 @@ actor AssetAudit {
                     addIfAsset(caption.src, into: &set)
                 }
             }
-        case .narrative, .quote, .cta, .projectSnapshot, .keyStats, .goalsMetrics:
+        case .body, .pageHero, .caseStudy, .videoDetails, .externalLink, .tagList, .relatedProjects,
+                .quote, .cta, .projectSnapshot, .keyStats, .goalsMetrics:
             break
         }
     }
@@ -291,7 +294,7 @@ actor AssetAudit {
             issues.append(contentsOf: validate(href: cta.href, source: "Splash CTA — \(title)", fileName: nil, knownProjectSlugs: knownProjectSlugs))
         }
 
-        for project in projects {
+            for project in projects {
             let prefix = project.frontmatter.title.isEmpty ? project.fileName : project.frontmatter.title
             if let external = project.frontmatter.externalUrl, !external.isEmpty {
                 issues.append(contentsOf: validate(href: external, source: "\(prefix) — externalUrl", fileName: project.fileName, knownProjectSlugs: knownProjectSlugs))
@@ -302,6 +305,10 @@ actor AssetAudit {
                     for link in cta.links {
                         let label = link.label.isEmpty ? "CTA block" : "CTA block “\(link.label)”"
                         issues.append(contentsOf: validate(href: link.href, source: "\(prefix) — \(label)", fileName: project.fileName, knownProjectSlugs: knownProjectSlugs))
+                    }
+                case .externalLink(let e):
+                    if !e.href.isEmpty {
+                        issues.append(contentsOf: validate(href: e.href, source: "\(prefix) — external link block", fileName: project.fileName, knownProjectSlugs: knownProjectSlugs))
                     }
                 case .videoShowcase(let v):
                     if let href = v.ctaHref, !href.isEmpty {
@@ -333,7 +340,11 @@ actor AssetAudit {
                             ))
                         }
                     }
-                case .narrative, .quote, .keyStats, .goalsMetrics, .mediaGallery, .projectSnapshot:
+                case .videoDetails(let vd):
+                    if let t = vd.transcriptUrl, !t.isEmpty {
+                        issues.append(contentsOf: validate(href: t, source: "\(prefix) — transcript URL", fileName: project.fileName, knownProjectSlugs: knownProjectSlugs))
+                    }
+                case .body, .pageHero, .headerImage, .caseStudy, .tagList, .relatedProjects, .quote, .keyStats, .goalsMetrics, .mediaGallery, .projectSnapshot:
                     break
                 }
             }
