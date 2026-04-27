@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import OSLog
 import SwiftUI
 
 /// Top-level app state. One instance lives at the app root and is read by
@@ -23,9 +24,35 @@ final class CMSStore {
         case failed(String)
     }
 
+    enum ProjectReloadPipelineState: Equatable {
+        case idle
+        case running(total: Int)
+        case partial(completed: Int, total: Int)
+        case complete(total: Int)
+        case error(String)
+    }
+
+    enum SavePipelineState: Equatable {
+        case idle
+        case running(target: String)
+        case complete(target: String)
+        case error(target: String, message: String)
+    }
+
+    struct PipelineTelemetry: Equatable {
+        var reloadRequests: Int = 0
+        var reloadSuperseded: Int = 0
+        var reloadFailures: Int = 0
+        var saveRequests: Int = 0
+        var saveSuperseded: Int = 0
+        var saveFailures: Int = 0
+    }
+
     // Domain
     var splashContent: SplashContent = .empty
-    var projects: [ProjectDocument] = []
+    var projects: [ProjectDocument] = [] {
+        didSet { rebuildProjectIndex() }
+    }
     var siteSettings: SiteSettings = .default
 
     // Original on-disk state (used for dirty diffing and Discard).
@@ -35,6 +62,9 @@ final class CMSStore {
 
     // UI state
     var loadState: LoadState = .idle
+    var projectReloadPipelineState: ProjectReloadPipelineState = .idle
+    var savePipelineState: SavePipelineState = .idle
+    private(set) var pipelineTelemetry: PipelineTelemetry = .init()
     var toast: ToastMessage?
     var lastError: String?
 
@@ -98,11 +128,15 @@ final class CMSStore {
     /// `RepoSettingsService` actor.
     private(set) var repoPreferences: RepoPreferences = .empty
     private var repoPreferencesPersistTask: Task<Void, Never>?
+    private var projectIndexByFileName: [String: Int] = [:]
 
     private static let siteHealthIssuesDefaultsKey = "SubtextLastSiteHealthIssueTotal"
+    private static let perfLogger = Logger(subsystem: "com.subtext.app", category: "ux.perf")
+    private let metricClock = ContinuousClock()
 
     init() {
         siteHealthOpenIssueTotal = UserDefaults.standard.integer(forKey: Self.siteHealthIssuesDefaultsKey)
+        rebuildProjectIndex()
     }
 
     func recordSiteHealthIssueTotal(_ total: Int) {
@@ -181,9 +215,11 @@ final class CMSStore {
     // MARK: - Loading
 
     func loadAll() async {
+        let started = metricClock.now
         guard RepoConstants.hasUserSelectedRoot else {
             loadState = .awaitingRepoSelection
             lastError = nil
+            recordUXMetric("loadAll.awaitingRepoSelection", started: started)
             return
         }
 
@@ -212,10 +248,12 @@ final class CMSStore {
             self.startAutosave()
             await self.loadRepoPreferences()
             await self.loadDraftRecovery()
+            recordUXMetric("loadAll.success", started: started)
         } catch {
             self.loadState = .failed(error.localizedDescription)
             self.lastError = error.localizedDescription
             self.eventLog.append(.error, category: "load", message: error.localizedDescription)
+            recordUXMetric("loadAll.failed", started: started, metadata: error.localizedDescription)
         }
     }
 
@@ -264,7 +302,7 @@ final class CMSStore {
         } else if url.path(percentEncoded: false)
             .hasPrefix(RepoConstants.projectsDirectory.path(percentEncoded: false))
         {
-            await reloadProjects()
+            await reloadProject(at: url)
         }
         externalChanges.remove(url)
         watcher?.acknowledgeOwnWrite(url)
@@ -322,7 +360,8 @@ final class CMSStore {
         switch conflict.kind {
         case .splash: await reloadSplash()
         case .site: await reloadSite()
-        case .project: await reloadProjects()
+        case .project(let fileName):
+            await reloadProject(fileName: fileName)
         }
         externalChanges.remove(conflict.fileURL)
     }
@@ -437,7 +476,8 @@ final class CMSStore {
     var isSiteDirty: Bool { siteSettings != originalSite }
 
     func isProjectDirty(_ fileName: String) -> Bool {
-        guard let current = projects.first(where: { $0.fileName == fileName }) else { return false }
+        guard let idx = projectIndexByFileName[fileName], projects.indices.contains(idx) else { return false }
+        let current = projects[idx]
         guard let original = originalProjects[fileName] else { return true }
         return current != original
     }
@@ -480,8 +520,12 @@ final class CMSStore {
 
     private func performSaveSplash(force: Bool) async {
         let url = RepoConstants.splashFile
+        beginSaveRequest(target: "splash")
+        savePipelineState = .running(target: "splash")
         if !force, detectsExternalModification(at: url) {
             pendingSaveConflict = SaveConflict(kind: .splash, fileURL: url)
+            savePipelineState = .error(target: "splash", message: "External modification conflict")
+            pipelineTelemetry.saveFailures += 1
             return
         }
         do {
@@ -491,8 +535,11 @@ final class CMSStore {
             watcher?.acknowledgeOwnWrite(url)
             externalChanges.remove(url)
             showToast("Saved splash.json")
+            savePipelineState = .complete(target: "splash")
         } catch {
             showError(error)
+            savePipelineState = .error(target: "splash", message: error.localizedDescription)
+            pipelineTelemetry.saveFailures += 1
         }
     }
 
@@ -502,8 +549,12 @@ final class CMSStore {
 
     private func performSaveSite(force: Bool) async {
         let url = RepoConstants.siteFile
+        beginSaveRequest(target: "site")
+        savePipelineState = .running(target: "site")
         if !force, detectsExternalModification(at: url) {
             pendingSaveConflict = SaveConflict(kind: .site, fileURL: url)
+            savePipelineState = .error(target: "site", message: "External modification conflict")
+            pipelineTelemetry.saveFailures += 1
             return
         }
         do {
@@ -513,8 +564,11 @@ final class CMSStore {
             watcher?.acknowledgeOwnWrite(url)
             externalChanges.remove(url)
             showToast("Saved site.json")
+            savePipelineState = .complete(target: "site")
         } catch {
             showError(error)
+            savePipelineState = .error(target: "site", message: error.localizedDescription)
+            pipelineTelemetry.saveFailures += 1
         }
     }
 
@@ -523,7 +577,13 @@ final class CMSStore {
     }
 
     private func performSaveProject(_ fileName: String, force: Bool) async {
-        guard let doc = projects.first(where: { $0.fileName == fileName }) else { return }
+        beginSaveRequest(target: fileName)
+        savePipelineState = .running(target: fileName)
+        guard let doc = projects.first(where: { $0.fileName == fileName }) else {
+            savePipelineState = .error(target: fileName, message: "Project not found in memory")
+            pipelineTelemetry.saveFailures += 1
+            return
+        }
         let validationIssues = ProjectValidator.validate(doc)
         if !validationIssues.isEmpty {
             let summary = validationIssues
@@ -531,6 +591,8 @@ final class CMSStore {
                 .map(\.message)
                 .joined(separator: " ")
             showError("Cannot save \(fileName): \(summary)")
+            savePipelineState = .error(target: fileName, message: summary)
+            pipelineTelemetry.saveFailures += 1
             return
         }
         let url = projectURL(for: fileName)
@@ -539,6 +601,8 @@ final class CMSStore {
                 kind: .project(fileName: fileName),
                 fileURL: url
             )
+            savePipelineState = .error(target: fileName, message: "External modification conflict")
+            pipelineTelemetry.saveFailures += 1
             return
         }
         do {
@@ -548,12 +612,18 @@ final class CMSStore {
             watcher?.acknowledgeOwnWrite(url)
             externalChanges.remove(url)
             showToast("Saved \(doc.frontmatter.title)")
+            savePipelineState = .complete(target: fileName)
         } catch {
             showError(error)
+            savePipelineState = .error(target: fileName, message: error.localizedDescription)
+            pipelineTelemetry.saveFailures += 1
         }
     }
 
     func saveCurrent(for tab: SidebarTab) async {
+        let started = metricClock.now
+        beginSaveRequest(target: tab.rawValue)
+        savePipelineState = .running(target: tab.rawValue)
         switch tab {
         case .home: await saveSplash()
         case .settings: await saveSite()
@@ -565,6 +635,13 @@ final class CMSStore {
                     await saveProject(doc.fileName)
                 }
             }
+        }
+        recordUXMetric("saveCurrent.\(tab.rawValue)", started: started)
+        switch savePipelineState {
+        case .error:
+            break
+        default:
+            savePipelineState = .complete(target: tab.rawValue)
         }
     }
 
@@ -716,7 +793,7 @@ final class CMSStore {
     }
 
     func binding(forProject fileName: String) -> Binding<ProjectDocument>? {
-        guard let idx = projects.firstIndex(where: { $0.fileName == fileName }) else { return nil }
+        guard let idx = projectIndexByFileName[fileName], projects.indices.contains(idx) else { return nil }
         return Binding(
             get: { self.projects[idx] },
             set: { self.projects[idx] = $0 }
@@ -783,8 +860,13 @@ final class CMSStore {
     }
 
     func reloadProjects() async {
+        let started = metricClock.now
+        beginReloadRequest(target: "all")
+        projectReloadPipelineState = .running(total: projects.count)
+        var completed = 0
         do {
             let docs = try await fileService.readAllProjects()
+            let total = max(docs.count, 1)
             projects = docs.sorted(by: Self.projectSortOrder)
             originalProjects = Dictionary(uniqueKeysWithValues: docs.map { ($0.fileName, $0) })
             refreshWatchedSet()
@@ -792,9 +874,69 @@ final class CMSStore {
                 let url = projectURL(for: doc.fileName)
                 watcher?.acknowledgeOwnWrite(url)
                 externalChanges.remove(url)
+                completed += 1
+                projectReloadPipelineState = .partial(completed: completed, total: total)
             }
+            if docs.isEmpty {
+                projectReloadPipelineState = .complete(total: 0)
+            } else {
+                projectReloadPipelineState = .complete(total: docs.count)
+            }
+            recordUXMetric("reloadProjects.success", started: started, metadata: "\(docs.count) docs")
         } catch {
             showError(error)
+            projectReloadPipelineState = .error(error.localizedDescription)
+            pipelineTelemetry.reloadFailures += 1
+            recordUXMetric("reloadProjects.failed", started: started, metadata: error.localizedDescription)
+        }
+    }
+
+    func reloadProject(fileName: String) async {
+        let url = projectURL(for: fileName)
+        await reloadProject(at: url)
+    }
+
+    /// Incremental reload path for a single changed project file.
+    /// Avoids broad project rescans for watcher-driven external edits.
+    func reloadProject(at url: URL) async {
+        let started = metricClock.now
+        let fileName = url.lastPathComponent
+        beginReloadRequest(target: fileName)
+        projectReloadPipelineState = .running(total: 1)
+
+        if !FileManager.default.fileExists(atPath: url.path(percentEncoded: false)) {
+            projects.removeAll { $0.fileName == fileName }
+            originalProjects.removeValue(forKey: fileName)
+            if selectedProjectFileName == fileName {
+                selectedProjectFileName = nil
+            }
+            refreshWatchedSet()
+            watcher?.acknowledgeOwnWrite(url)
+            externalChanges.remove(url)
+            projectReloadPipelineState = .complete(total: 1)
+            recordUXMetric("reloadProject.deleted", started: started, metadata: fileName)
+            return
+        }
+
+        do {
+            let doc = try await fileService.readProject(at: url)
+            if let idx = projectIndexByFileName[fileName], projects.indices.contains(idx) {
+                projects[idx] = doc
+            } else {
+                projects.append(doc)
+            }
+            projects.sort(by: Self.projectSortOrder)
+            originalProjects[fileName] = doc
+            refreshWatchedSet()
+            watcher?.acknowledgeOwnWrite(url)
+            externalChanges.remove(url)
+            projectReloadPipelineState = .complete(total: 1)
+            recordUXMetric("reloadProject.success", started: started, metadata: fileName)
+        } catch {
+            showError(error)
+            projectReloadPipelineState = .error("\(fileName): \(error.localizedDescription)")
+            pipelineTelemetry.reloadFailures += 1
+            recordUXMetric("reloadProject.failed", started: started, metadata: "\(fileName): \(error.localizedDescription)")
         }
     }
 
@@ -853,10 +995,63 @@ final class CMSStore {
         eventLog.append(.error, category: "error", message: message)
     }
 
+    // MARK: - UX/perf instrumentation
+
+    /// Records a single latency sample in the in-app event log and unified OS log.
+    /// Phase 0 uses this to establish baseline timings before behavior changes.
+    func recordUXMetric(_ name: String, started: ContinuousClock.Instant, metadata: String? = nil) {
+        let elapsed = metricClock.now - started
+        let elapsedMs = elapsed.components.seconds * 1_000 + elapsed.components.attoseconds / 1_000_000_000_000_000
+        let message = if let metadata, !metadata.isEmpty {
+            "\(name): \(elapsedMs)ms (\(metadata))"
+        } else {
+            "\(name): \(elapsedMs)ms"
+        }
+        eventLog.append(.info, category: "ux.perf", message: message)
+        Self.perfLogger.info("\(message, privacy: .public)")
+    }
+
+    /// Records a non-latency UX telemetry event.
+    func recordUXEvent(_ name: String, metadata: String? = nil) {
+        let message = if let metadata, !metadata.isEmpty {
+            "\(name) (\(metadata))"
+        } else {
+            name
+        }
+        eventLog.append(.info, category: "ux.event", message: message)
+        Self.perfLogger.info("\(message, privacy: .public)")
+    }
+
+    private func beginReloadRequest(target: String) {
+        pipelineTelemetry.reloadRequests += 1
+        if case .running = projectReloadPipelineState {
+            pipelineTelemetry.reloadSuperseded += 1
+            recordUXEvent("reload.coalesce.superseded", metadata: target)
+        } else {
+            recordUXEvent("reload.coalesce.queued", metadata: target)
+        }
+    }
+
+    private func beginSaveRequest(target: String) {
+        pipelineTelemetry.saveRequests += 1
+        if case .running = savePipelineState {
+            pipelineTelemetry.saveSuperseded += 1
+            recordUXEvent("save.coalesce.superseded", metadata: target)
+        } else {
+            recordUXEvent("save.coalesce.queued", metadata: target)
+        }
+    }
+
     // MARK: - Session-end backups
 
     private func markSessionChangedFile(_ url: URL) {
         sessionChangedFiles.insert(url)
+    }
+
+    private func rebuildProjectIndex() {
+        projectIndexByFileName = Dictionary(
+            uniqueKeysWithValues: projects.enumerated().map { ($0.element.fileName, $0.offset) }
+        )
     }
 
     /// Create one backup per file changed in this session.

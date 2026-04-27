@@ -35,19 +35,27 @@ struct HistoryRow: View {
     }
 
     private var relativeString: String {
-        let formatter = RelativeDateTimeFormatter()
-        formatter.unitsStyle = .full
-        return formatter.localizedString(for: entry.timestamp, relativeTo: Date())
+        Self.relativeFormatter.localizedString(for: entry.timestamp, relativeTo: Date())
     }
 
     private var absoluteString: String {
-        let formatter = DateFormatter()
-        formatter.dateStyle = .medium
-        formatter.timeStyle = .short
-        return formatter.string(from: entry.timestamp)
+        Self.absoluteFormatter.string(from: entry.timestamp)
     }
 
     private var sizeString: String {
         ByteCountFormatter.string(fromByteCount: entry.size, countStyle: .file)
     }
+
+    private static let relativeFormatter: RelativeDateTimeFormatter = {
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .full
+        return formatter
+    }()
+
+    private static let absoluteFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .short
+        return formatter
+    }()
 }

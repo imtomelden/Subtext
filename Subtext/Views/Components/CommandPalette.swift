@@ -27,6 +27,7 @@ struct CommandPalette: View {
     @Environment(\.dismiss) private var dismiss
     @State private var query: String = ""
     @State private var selection: PaletteCommand.ID?
+    @State private var searchIndex: SearchIndex = .empty
     @FocusState private var fieldFocused: Bool
 
     var body: some View {
@@ -41,7 +42,19 @@ struct CommandPalette: View {
             }
         }
         .frame(width: 640, height: 440)
-        .onAppear { fieldFocused = true }
+        .onAppear {
+            fieldFocused = true
+            rebuildSearchIndex()
+        }
+        .onChange(of: store.projects) { _, _ in
+            rebuildSearchIndex()
+        }
+        .onChange(of: store.splashContent.sections) { _, _ in
+            rebuildSearchIndex()
+        }
+        .onChange(of: store.splashContent.ctas) { _, _ in
+            rebuildSearchIndex()
+        }
         .onKeyPress(.escape) {
             dismiss()
             return .handled
@@ -165,7 +178,7 @@ struct CommandPalette: View {
             return Array(items.prefix(80))
         }
         let scored: [(PaletteCommand, Int)] = items.compactMap { item in
-            guard let score = fuzzyScore(haystack: item.searchableText, needle: q) else {
+            guard let score = fuzzyScore(haystackLowercased: item.searchableText.lowercased(), needleLowercased: q) else {
                 return nil
             }
             return (item, score)
@@ -177,28 +190,7 @@ struct CommandPalette: View {
     }
 
     private func allItems() -> [PaletteCommand] {
-        var items: [PaletteCommand] = []
-
-        // Sidebar tabs
-        for tab in SidebarTab.allCases {
-            items.append(.tab(tab))
-        }
-
-        // Home sections + CTAs
-        for section in store.splashContent.sections {
-            items.append(.section(id: section.id, title: section.heading))
-        }
-        for cta in store.splashContent.ctas {
-            items.append(.cta(id: cta.id, title: cta.name.isEmpty ? cta.heading : cta.name))
-        }
-
-        // Projects
-        for project in store.projects {
-            items.append(.project(
-                fileName: project.fileName,
-                title: project.frontmatter.title.isEmpty ? project.fileName : project.frontmatter.title
-            ))
-        }
+        var items = searchIndex.baseItems
 
         // In search mode, include content hits so users can jump to the
         // source of a remembered phrase.
@@ -213,35 +205,33 @@ struct CommandPalette: View {
         let q = query.lowercased()
         var hits: [PaletteCommand] = []
 
-        for section in store.splashContent.sections {
-            for (idx, paragraph) in section.bodyParagraphs.enumerated() {
-                if paragraph.lowercased().contains(q) {
+        for section in searchIndex.sectionBodies {
+            for paragraph in section.paragraphs {
+                if paragraph.lowercased.contains(q) {
                     hits.append(.bodyHit(
-                        fileLabel: "splash.json · \(section.heading)",
-                        snippet: snippet(from: paragraph, matching: q),
-                        target: .section(id: section.id, title: section.heading)
+                        fileLabel: "splash.json · \(section.title)",
+                        snippet: snippet(from: paragraph.raw, matching: q),
+                        target: .section(id: section.id, title: section.title)
                     ))
-                    _ = idx
                 }
             }
-            if let subtitle = section.subtitle, subtitle.lowercased().contains(q) {
+            if let subtitle = section.subtitle, subtitle.lowercased.contains(q) {
                 hits.append(.bodyHit(
-                    fileLabel: "splash.json · \(section.heading) (subtitle)",
-                    snippet: snippet(from: subtitle, matching: q),
-                    target: .section(id: section.id, title: section.heading)
+                    fileLabel: "splash.json · \(section.title) (subtitle)",
+                    snippet: snippet(from: subtitle.raw, matching: q),
+                    target: .section(id: section.id, title: section.title)
                 ))
             }
         }
 
-        for project in store.projects {
-            let body = project.body
-            if body.lowercased().contains(q) {
+        for project in searchIndex.projectBodies {
+            if project.bodyLowercased.contains(q) {
                 hits.append(.bodyHit(
-                    fileLabel: "\(project.fileName)",
-                    snippet: snippet(from: body, matching: q),
+                    fileLabel: project.fileName,
+                    snippet: snippet(from: project.bodyRaw, matching: q),
                     target: .project(
                         fileName: project.fileName,
-                        title: project.frontmatter.title
+                        title: project.title
                     )
                 ))
             }
@@ -265,8 +255,7 @@ struct CommandPalette: View {
     /// Simple fuzzy scorer: returns `nil` on no match, otherwise a
     /// non-negative score where higher is better. Exact substring hits
     /// dominate, then prefix matches, then scattered subsequence matches.
-    private func fuzzyScore(haystack: String, needle: String) -> Int? {
-        let h = haystack.lowercased()
+    private func fuzzyScore(haystackLowercased h: String, needleLowercased needle: String) -> Int? {
         if h.contains(needle) {
             let base = 1000 - abs(h.count - needle.count)
             if h.hasPrefix(needle) { return base + 500 }
@@ -283,6 +272,76 @@ struct CommandPalette: View {
             matched += 1
         }
         return matched * 10 - (h.count - needle.count)
+    }
+
+    private func rebuildSearchIndex() {
+        searchIndex = SearchIndex.build(
+            splashSections: store.splashContent.sections,
+            splashCTAs: store.splashContent.ctas,
+            projects: store.projects
+        )
+    }
+}
+
+private struct SearchIndex {
+    struct IndexedString {
+        let raw: String
+        let lowercased: String
+    }
+
+    struct SectionBodyIndex {
+        let id: String
+        let title: String
+        let subtitle: IndexedString?
+        let paragraphs: [IndexedString]
+    }
+
+    struct ProjectBodyIndex {
+        let fileName: String
+        let title: String
+        let bodyRaw: String
+        let bodyLowercased: String
+    }
+
+    let baseItems: [PaletteCommand]
+    let sectionBodies: [SectionBodyIndex]
+    let projectBodies: [ProjectBodyIndex]
+
+    static let empty = SearchIndex(baseItems: [], sectionBodies: [], projectBodies: [])
+
+    static func build(
+        splashSections: [SplashSection],
+        splashCTAs: [SplashCTA],
+        projects: [ProjectDocument]
+    ) -> SearchIndex {
+        var items: [PaletteCommand] = SidebarTab.allCases.map { .tab($0) }
+        items.append(contentsOf: splashSections.map { .section(id: $0.id, title: $0.heading) })
+        items.append(contentsOf: splashCTAs.map {
+            .cta(id: $0.id, title: $0.name.isEmpty ? $0.heading : $0.name)
+        })
+        items.append(contentsOf: projects.map {
+            .project(fileName: $0.fileName, title: $0.frontmatter.title.isEmpty ? $0.fileName : $0.frontmatter.title)
+        })
+
+        let sectionBodies = splashSections.map { section in
+            SectionBodyIndex(
+                id: section.id,
+                title: section.heading,
+                subtitle: section.subtitle.map { IndexedString(raw: $0, lowercased: $0.lowercased()) },
+                paragraphs: section.bodyParagraphs.map { IndexedString(raw: $0, lowercased: $0.lowercased()) }
+            )
+        }
+
+        let projectBodies = projects.map { project in
+            ProjectBodyIndex(
+                fileName: project.fileName,
+                title: project.frontmatter.title,
+                bodyRaw: project.body,
+                bodyLowercased: project.body.lowercased()
+            )
+        }
+
+        return SearchIndex(baseItems: items, sectionBodies: sectionBodies, projectBodies: projectBodies)
     }
 }
 

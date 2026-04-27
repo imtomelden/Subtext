@@ -39,7 +39,7 @@ struct MediaGalleryBlockEditor: View {
                         .foregroundStyle(.secondary)
                     }
                     .padding(10)
-                    .background(.quaternary.opacity(0.25), in: RoundedRectangle(cornerRadius: 8))
+                    .background(SubtextUI.Surface.subtleFill, in: RoundedRectangle(cornerRadius: SubtextUI.Radius.small))
                 }
 
                 Button {
@@ -109,8 +109,8 @@ private struct MediaThumbnail: View {
             }
         }
         .frame(width: 72, height: 72)
-        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-        .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: SubtextUI.Radius.small, style: .continuous))
+        .background(SubtextUI.Surface.subtleFill, in: RoundedRectangle(cornerRadius: SubtextUI.Radius.small, style: .continuous))
     }
 
     private var resolvedURL: URL? {

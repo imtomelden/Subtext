@@ -23,22 +23,43 @@ private func readPipesToEndAndWait(
     errPipe: Pipe,
     _ proc: Process
 ) -> (out: String, err: String) {
-    var stdout = Data()
-    var stderr = Data()
+    let stdout = PipeDataBox()
+    let stderr = PipeDataBox()
     let group = DispatchGroup()
     group.enter()
     DispatchQueue.global(qos: .userInitiated).async {
-        stdout = outPipe.fileHandleForReading.readDataToEndOfFile()
+        stdout.store(outPipe.fileHandleForReading.readDataToEndOfFile())
         group.leave()
     }
     group.enter()
     DispatchQueue.global(qos: .userInitiated).async {
-        stderr = errPipe.fileHandleForReading.readDataToEndOfFile()
+        stderr.store(errPipe.fileHandleForReading.readDataToEndOfFile())
         group.leave()
     }
     proc.waitUntilExit()
     group.wait()
-    return (String(decoding: stdout, as: UTF8.self), String(decoding: stderr, as: UTF8.self))
+    return (
+        String(decoding: stdout.value, as: UTF8.self),
+        String(decoding: stderr.value, as: UTF8.self)
+    )
+}
+
+private final class PipeDataBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storage = Data()
+
+    func store(_ data: Data) {
+        lock.lock()
+        storage = data
+        lock.unlock()
+    }
+
+    var value: Data {
+        lock.lock()
+        let data = storage
+        lock.unlock()
+        return data
+    }
 }
 
 /// Phase 3 stub — shells out to `npm run dev` inside the website repo and

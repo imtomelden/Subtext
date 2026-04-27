@@ -37,7 +37,7 @@ struct CtaBlockEditor: View {
                             }
                         }
                         .padding(10)
-                        .background(.quaternary.opacity(0.25), in: RoundedRectangle(cornerRadius: 8))
+                        .background(SubtextUI.Surface.subtleFill, in: RoundedRectangle(cornerRadius: SubtextUI.Radius.small))
                     }
 
                     Button {

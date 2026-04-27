@@ -18,7 +18,7 @@ struct NarrativeBlockEditor: View {
                     .foregroundStyle(.secondary)
             }
             .padding(12)
-            .background(.quaternary.opacity(0.3), in: RoundedRectangle(cornerRadius: 9))
+            .background(SubtextUI.Surface.subtleFill, in: RoundedRectangle(cornerRadius: SubtextUI.Radius.small))
         }
     }
 }

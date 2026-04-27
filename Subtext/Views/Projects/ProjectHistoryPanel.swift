@@ -19,7 +19,7 @@ struct ProjectHistoryPanel: View {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("\(fileName) history")
-                        .font(.title3.weight(.semibold))
+                        .font(SubtextUI.Typography.sectionTitle)
                     Text("\(entries.count) backup\(entries.count == 1 ? "" : "s") retained")
                         .font(.caption)
                         .foregroundStyle(.secondary)

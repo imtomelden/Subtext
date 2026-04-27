@@ -57,18 +57,35 @@ struct SourcePreviewDrawer: View {
                 .buttonStyle(.plain)
                 .keyboardShortcut(.cancelAction)
             }
-            .padding(18)
+            .padding(SubtextUI.Spacing.large + 2)
 
             Divider()
 
             ScrollView {
-                Text(serialised)
-                    .font(.system(.caption, design: .monospaced))
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .textSelection(.enabled)
-                    .padding(18)
+                VStack(alignment: .leading, spacing: SubtextUI.Spacing.small + 2) {
+                    if hasSerialisationError {
+                        Label("Source could not be encoded cleanly. Showing fallback text.", systemImage: "exclamationmark.triangle.fill")
+                            .font(SubtextUI.Typography.caption)
+                            .foregroundStyle(Color.subtextWarning)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(
+                                RoundedRectangle(cornerRadius: SubtextUI.Radius.small, style: .continuous)
+                                    .fill(SubtextUI.Surface.warningBannerFill)
+                            )
+                    }
+
+                    Text(serialised)
+                        .font(.system(.caption, design: .monospaced))
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .textSelection(.enabled)
+                }
+                .padding(SubtextUI.Spacing.large + 2)
             }
-            .background(.quaternary.opacity(0.2))
+            .background(
+                GlassSurface(prominence: .interactive, cornerRadius: 0) { Color.clear }
+            )
         }
         .frame(minWidth: 520, minHeight: 480)
     }
@@ -120,6 +137,15 @@ struct SourcePreviewDrawer: View {
             return "// Failed to encode site.json"
         case .project(let doc):
             return MDXSerialiser.serialise(doc)
+        }
+    }
+
+    private var hasSerialisationError: Bool {
+        switch source {
+        case .project:
+            return false
+        case .splash, .site:
+            return serialised.hasPrefix("// Failed to encode")
         }
     }
 }

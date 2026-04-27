@@ -20,8 +20,12 @@ struct ProjectsListView: View {
                         .padding(.horizontal, density.sectionOuterSpacing)
                 } else {
                     LazyVStack(spacing: density.listRowSpacing) {
+                        let seoIssuesByFileName = seoIssuesLookup(for: filteredProjects)
                         ForEach(filteredProjects) { project in
-                            ProjectListCard(document: project) {
+                            ProjectListCard(
+                                document: project,
+                                seoIssues: seoIssuesByFileName[project.fileName] ?? []
+                            ) {
                                 store.selectedProjectFileName = project.fileName
                             } onDelete: {
                                 deleteTarget = project
@@ -62,6 +66,10 @@ struct ProjectsListView: View {
         }
     }
 
+    private func seoIssuesLookup(for projects: [ProjectDocument]) -> [String: [String]] {
+        Dictionary(uniqueKeysWithValues: projects.map { ($0.fileName, SEOPreview.issues(for: $0)) })
+    }
+
     @ViewBuilder
     private var header: some View {
         HStack(alignment: .firstTextBaseline) {
@@ -69,7 +77,7 @@ struct ProjectsListView: View {
                 Text("Projects")
                     .font(.largeTitle.weight(.semibold))
                 Text("\(store.projects.count) case studies in /src/content/projects")
-                    .font(.callout)
+                    .font(SubtextUI.Typography.body)
                     .foregroundStyle(.secondary)
             }
             Spacer()
@@ -94,7 +102,7 @@ struct ProjectsListView: View {
 
     @ViewBuilder
     private var searchField: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: SubtextUI.Spacing.small + 2) {
             Image(systemName: "magnifyingglass")
                 .foregroundStyle(.secondary)
             TextField("Search projects", text: $searchText)
@@ -102,30 +110,41 @@ struct ProjectsListView: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 9)
-        .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 9))
+        .background(
+            GlassSurface(prominence: .regular, cornerRadius: SubtextUI.Radius.small) {
+                Color.clear
+            }
+        )
     }
 
     @ViewBuilder
     private var emptyState: some View {
-        VStack(spacing: 10) {
-            Image(systemName: "folder.badge.questionmark")
-                .font(.system(size: 36))
-                .foregroundStyle(.secondary)
-            Text(searchText.isEmpty ? "No projects yet" : "No projects match “\(searchText)”")
-                .font(.callout.weight(.medium))
-            if searchText.isEmpty {
-                Text("Create your first case study with the “New project” button.")
-                    .font(.caption)
+        GlassSurface(prominence: .regular, cornerRadius: SubtextUI.Radius.xLarge) {
+            VStack(spacing: 10) {
+                Image(systemName: "folder.badge.questionmark")
+                    .font(.system(size: 32, weight: .medium))
                     .foregroundStyle(.secondary)
+                Text(searchText.isEmpty ? "No projects yet" : "No projects match “\(searchText)”")
+                    .font(.callout.weight(.medium))
+                if searchText.isEmpty {
+                    Text("Create your first case study with the “New project” button.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else {
+                    Text("Try a different title, slug, or tag.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 56)
         }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 60)
     }
 }
 
 private struct ProjectListCard: View {
     let document: ProjectDocument
+    let seoIssues: [String]
     var onOpen: () -> Void
     var onDelete: () -> Void
     @Environment(CMSStore.self) private var store
@@ -138,7 +157,7 @@ private struct ProjectListCard: View {
         } content: {
             HStack(alignment: .top, spacing: 10) {
                 if let thumbnail = document.frontmatter.thumbnail, !thumbnail.isEmpty {
-                    AssetMediaThumbnail(src: thumbnail, size: 44, cornerRadius: 7)
+                    AssetMediaThumbnail(src: thumbnail, size: 44, cornerRadius: SubtextUI.Radius.tiny)
                 }
                 VStack(alignment: .leading, spacing: 4) {
                     HStack(spacing: 6) {
@@ -152,11 +171,11 @@ private struct ProjectListCard: View {
                         }
                         if document.frontmatter.draft {
                             Text("DRAFT")
-                                .font(.caption2.weight(.bold))
-                                .foregroundStyle(.orange)
+                                .font(SubtextUI.Typography.microLabel)
+                                .foregroundStyle(Color.subtextWarning)
                                 .padding(.horizontal, 6)
                                 .padding(.vertical, 2)
-                                .background(Capsule().fill(.orange.opacity(0.18)))
+                                .background(Capsule().fill(SubtextUI.Surface.warningFill))
                         }
                         if isDirty {
                             Circle()
@@ -213,15 +232,14 @@ private struct ProjectListCard: View {
     /// site audit sheet for details.
     @ViewBuilder
     private var seoBadge: some View {
-        let issues = SEOPreview.issues(for: document)
-        if !issues.isEmpty {
-            Text("SEO \(issues.count)")
-                .font(.caption2.weight(.bold))
+        if !seoIssues.isEmpty {
+            Text("SEO \(seoIssues.count)")
+                .font(SubtextUI.Typography.microLabel)
                 .foregroundStyle(Color.subtextWarning)
                 .padding(.horizontal, 6)
                 .padding(.vertical, 2)
-                .background(Capsule().fill(Color.subtextWarning.opacity(0.18)))
-                .help(issues.joined(separator: "\n"))
+                .background(Capsule().fill(SubtextUI.Surface.warningFill))
+                .help(seoIssues.joined(separator: "\n"))
         } else {
             EmptyView()
         }
@@ -230,11 +248,11 @@ private struct ProjectListCard: View {
     private var categoryPill: some View {
         let tint = document.frontmatter.ownership.tint
         return Text(document.frontmatter.ownership.displayName.uppercased())
-            .font(.caption2.weight(.bold))
+            .font(SubtextUI.Typography.microLabel)
             .tracking(0.5)
             .foregroundStyle(tint)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
+            .padding(.horizontal, SubtextUI.Spacing.small)
+            .padding(.vertical, SubtextUI.Spacing.xSmall)
             .background(Capsule().fill(tint.opacity(0.18)))
             .accessibilityLabel("\(document.frontmatter.ownership.displayName) ownership")
     }

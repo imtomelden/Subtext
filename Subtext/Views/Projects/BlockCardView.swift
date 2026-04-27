@@ -11,26 +11,27 @@ struct BlockCardView: View {
         DraggableCard(reorderControls: reorderControls) {
             blockPill
         } content: {
-            HStack(alignment: .top, spacing: 10) {
+            HStack(alignment: .top, spacing: SubtextUI.Spacing.small + 2) {
                 if let mediaPath = previewMediaPath {
-                    AssetMediaThumbnail(src: mediaPath, size: 40, cornerRadius: 7)
+                    AssetMediaThumbnail(src: mediaPath, size: 40, cornerRadius: SubtextUI.Radius.tiny)
                 }
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: SubtextUI.Spacing.xSmall - 2) {
                     Text(block.kind.displayName)
-                        .font(.body.weight(.semibold))
+                        .font(SubtextUI.Typography.bodyStrong)
                     Text(block.inlinePreview)
-                        .font(.caption)
+                        .font(SubtextUI.Typography.caption)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                 }
             }
         } trailing: {
-            HStack(spacing: 6) {
+            HStack(spacing: SubtextUI.Spacing.small - 2) {
                 Button(action: onEdit) {
                     Image(systemName: "pencil")
                 }
                 .buttonStyle(.borderless)
                 .foregroundStyle(.secondary)
+                .controlSize(.small)
 
                 Button(role: .destructive) {
                     confirmDelete = true
@@ -39,6 +40,7 @@ struct BlockCardView: View {
                 }
                 .buttonStyle(.borderless)
                 .foregroundStyle(.secondary)
+                .controlSize(.small)
             }
         }
         .contentShape(Rectangle())
@@ -56,13 +58,13 @@ struct BlockCardView: View {
             Image(systemName: block.kind.systemImage)
                 .font(.caption2.weight(.semibold))
             Text(block.kind.displayName.uppercased())
-                .font(.caption2.weight(.bold))
+                .font(SubtextUI.Typography.microLabel)
                 .tracking(0.4)
         }
         .foregroundStyle(color)
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
-        .background(Capsule().fill(color.opacity(0.18)))
+        .padding(.horizontal, SubtextUI.Spacing.small)
+        .padding(.vertical, SubtextUI.Spacing.xSmall)
+        .background(Capsule().fill(color.opacity(0.16)))
     }
 
     private var previewMediaPath: String? {

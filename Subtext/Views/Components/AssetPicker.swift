@@ -9,11 +9,11 @@ struct AssetThumbnail: View {
     let src: String
     var size: CGFloat = 72
     var cornerRadius: CGFloat = 8
+    @State private var image: NSImage?
 
     var body: some View {
         Group {
-            if let url = Self.resolvedURL(for: src),
-               let image = NSImage(contentsOf: url) {
+            if let image {
                 Image(nsImage: image)
                     .resizable()
                     .aspectRatio(contentMode: .fill)
@@ -33,6 +33,9 @@ struct AssetThumbnail: View {
             .quaternary.opacity(0.4),
             in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
         )
+        .task(id: src) {
+            await loadImage()
+        }
     }
 
     /// Resolves a `src` string to a file URL under `/public`, or `nil` for
@@ -43,6 +46,33 @@ struct AssetThumbnail: View {
         let trimmed = src.hasPrefix("/") ? String(src.dropFirst()) : src
         return RepoConstants.publicDirectory.appending(path: trimmed, directoryHint: .notDirectory)
     }
+
+    @MainActor
+    private func loadImage() async {
+        guard let url = Self.resolvedURL(for: src) else {
+            image = nil
+            return
+        }
+        if let cached = Self.cache.object(forKey: url as NSURL) {
+            image = cached
+            return
+        }
+        let loaded = await Task.detached(priority: .utility) { () -> NSImage? in
+            guard let data = try? Data(contentsOf: url),
+                  let decoded = NSImage(data: data) else { return nil }
+            return decoded
+        }.value
+        if let loaded {
+            Self.cache.setObject(loaded, forKey: url as NSURL)
+        }
+        image = loaded
+    }
+
+    private static let cache: NSCache<NSURL, NSImage> = {
+        let cache = NSCache<NSURL, NSImage>()
+        cache.countLimit = 200
+        return cache
+    }()
 }
 
 /// Shared media preview that handles image and video paths.

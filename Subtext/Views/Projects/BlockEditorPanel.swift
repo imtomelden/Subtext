@@ -16,6 +16,11 @@ struct BlockEditorPanel: View {
             }
         }
         .focusable()
+        .background(
+            GlassSurface(prominence: .regular, cornerRadius: SubtextUI.Radius.xLarge) {
+                Color.clear
+            }
+        )
         .onKeyPress(.escape) {
             onClose()
             return .handled
@@ -24,21 +29,21 @@ struct BlockEditorPanel: View {
 
     @ViewBuilder
     private var header: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: SubtextUI.Spacing.small + 2) {
             Image(systemName: block.kind.systemImage)
-                .font(.title3)
+                .font(SubtextUI.Typography.title)
                 .foregroundStyle(Color.subtextAccent)
             Text(block.kind.displayName)
-                .font(.title3.weight(.semibold))
+                .font(SubtextUI.Typography.title)
             Spacer()
             Button(action: onClose) {
                 Image(systemName: "xmark.circle.fill")
-                    .font(.title3)
+                    .font(SubtextUI.Typography.title)
                     .foregroundStyle(.secondary)
             }
             .buttonStyle(.plain)
         }
-        .padding(20)
+        .padding(SubtextUI.Spacing.large + 4)
     }
 
     @ViewBuilder

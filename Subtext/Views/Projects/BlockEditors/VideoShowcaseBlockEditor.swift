@@ -115,7 +115,7 @@ struct VideoShowcaseBlockEditor: View {
             sourcePreview
         }
         .padding(10)
-        .background(.quaternary.opacity(0.25), in: RoundedRectangle(cornerRadius: 8))
+        .background(SubtextUI.Surface.subtleFill, in: RoundedRectangle(cornerRadius: SubtextUI.Radius.small))
     }
 
     private enum SourceKind: Hashable { case youtube, vimeo, file }
@@ -295,7 +295,7 @@ struct VideoShowcaseBlockEditor: View {
                         .toggleStyle(.switch)
                 }
                 .padding(8)
-                .background(.quaternary.opacity(0.2), in: RoundedRectangle(cornerRadius: 8))
+                .background(SubtextUI.Surface.subtleFill, in: RoundedRectangle(cornerRadius: SubtextUI.Radius.small))
             }
 
             Button {
@@ -323,7 +323,7 @@ struct VideoShowcaseBlockEditor: View {
             )
         case .file(let src, let poster, _, _, _):
             HStack(spacing: 10) {
-                AssetMediaThumbnail(src: poster ?? src, size: 52, cornerRadius: 8)
+                AssetMediaThumbnail(src: poster ?? src, size: 52, cornerRadius: SubtextUI.Radius.small)
                 VStack(alignment: .leading, spacing: 3) {
                     Text(src.isEmpty ? "No file selected yet." : src)
                         .font(.caption)

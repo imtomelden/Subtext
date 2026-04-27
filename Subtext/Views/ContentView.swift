@@ -11,9 +11,11 @@ struct ContentView: View {
     @AppStorage("SubtextDismissedQuickTips") private var dismissedQuickTips = false
     @State private var tab: SidebarTab = .home
     @State private var didApplyInitialTab = false
-    @State private var paletteMode: CommandPalette.Mode?
+    @State private var activeModal: ActiveModal?
+    @State private var pendingModal: ActiveModal?
+    @State private var lastPaletteModalRequestAt: Date = .distantPast
+    @State private var lastPaletteModalMode: CommandPalette.Mode?
     @State private var columnVisibility: NavigationSplitViewVisibility = .automatic
-    @State private var showKeyboardShortcuts = false
     @State private var repoSelectionError: String?
 
     var body: some View {
@@ -77,16 +79,21 @@ struct ContentView: View {
             openWindow(id: "subtext-preview")
         }
         .onReceive(NotificationCenter.default.publisher(for: .subtextOpenPalette)) { note in
+            let started = ContinuousClock().now
             let mode = (note.object as? CommandPalette.Mode) ?? .navigate
-            paletteMode = mode
+            guard !shouldSuppressPaletteOpenRequest(for: mode) else { return }
+            requestModal(.palette(mode))
+            lastPaletteModalRequestAt = Date()
+            lastPaletteModalMode = mode
+            store.recordUXMetric("palette.open.requested", started: started, metadata: mode.rawValue)
         }
         .onReceive(NotificationCenter.default.publisher(for: .subtextToggleFocusMode)) { _ in
-            withAnimation(.easeInOut(duration: 0.2)) {
+            withAnimation(UXMotion.easeInOut(duration: UXMotion.navigationDuration)) {
                 columnVisibility = columnVisibility == .detailOnly ? .automatic : .detailOnly
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: .subtextOpenKeyboardShortcuts)) { _ in
-            showKeyboardShortcuts = true
+            requestModal(.keyboardShortcuts)
         }
         .onReceive(NotificationCenter.default.publisher(for: .subtextOpenEventLog)) { _ in
             tab = .settings
@@ -98,18 +105,17 @@ struct ContentView: View {
                 await devServer.shutdownForQuit()
             }
         }
-        .sheet(item: $paletteMode) { mode in
-            CommandPalette(mode: mode) { command in
-                handlePaletteSelection(command)
+        .sheet(item: $activeModal, onDismiss: presentPendingModalIfNeeded) { modal in
+            switch modal {
+            case .palette(let mode):
+                CommandPalette(mode: mode) { command in
+                    handlePaletteSelection(command)
+                }
+            case .keyboardShortcuts:
+                KeyboardShortcutsSheet()
             }
         }
-        .sheet(isPresented: $showKeyboardShortcuts) {
-            KeyboardShortcutsSheet()
-        }
-        .alert("Folder validation failed", isPresented: Binding(
-            get: { repoSelectionError != nil },
-            set: { if !$0 { repoSelectionError = nil } }
-        ), presenting: repoSelectionError) { _ in
+        .alert("Folder validation failed", isPresented: repoSelectionErrorPresented, presenting: repoSelectionError) { _ in
             Button("OK", role: .cancel) { repoSelectionError = nil }
         } message: { message in
             Text(message)
@@ -154,6 +160,7 @@ struct ContentView: View {
     }
 
     private func handlePaletteSelection(_ command: PaletteCommand) {
+        let started = ContinuousClock().now
         switch command {
         case .tab(let selected):
             tab = selected
@@ -176,6 +183,37 @@ struct ContentView: View {
                 store.selectedProjectFileName = fileName
             }
         }
+        Task { @MainActor in
+            await Task.yield()
+            store.recordUXMetric("palette.selection.applied", started: started)
+        }
+    }
+
+    private func requestModal(_ modal: ActiveModal) {
+        if activeModal == nil {
+            activeModal = modal
+            return
+        }
+        guard activeModal != modal else { return }
+        pendingModal = modal
+        activeModal = nil
+    }
+
+    private func presentPendingModalIfNeeded() {
+        guard let pending = pendingModal else { return }
+        pendingModal = nil
+        Task { @MainActor in
+            await Task.yield()
+            activeModal = pending
+        }
+    }
+
+    private func shouldSuppressPaletteOpenRequest(for mode: CommandPalette.Mode) -> Bool {
+        if activeModal == .palette(mode) || pendingModal == .palette(mode) {
+            return true
+        }
+        let elapsed = Date().timeIntervalSince(lastPaletteModalRequestAt)
+        return lastPaletteModalMode == mode && elapsed < 0.20
     }
 
     @ViewBuilder
@@ -295,6 +333,33 @@ struct ContentView: View {
 
     private var appAppearanceMode: AppAppearanceMode {
         AppAppearanceMode(rawValue: appearanceModeRaw) ?? .system
+    }
+
+    private var repoSelectionErrorPresented: Binding<Bool> {
+        Binding(
+            get: {
+                repoSelectionError != nil
+            },
+            set: { isPresented in
+                if !isPresented {
+                    repoSelectionError = nil
+                }
+            }
+        )
+    }
+
+    private enum ActiveModal: Identifiable, Equatable {
+        case palette(CommandPalette.Mode)
+        case keyboardShortcuts
+
+        var id: String {
+            switch self {
+            case .palette(let mode):
+                "palette.\(mode.rawValue)"
+            case .keyboardShortcuts:
+                "keyboardShortcuts"
+            }
+        }
     }
 }
 

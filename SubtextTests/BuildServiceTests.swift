@@ -147,4 +147,287 @@ final class BuildServiceTests: XCTestCase {
         let pid = await service.currentPID()
         XCTAssertNil(pid)
     }
+
+    func testFileServiceWriteProjectUpdatesSubsequentRead() async throws {
+        let root = makeTempDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let url = root.appending(path: "example.mdx", directoryHint: .notDirectory)
+        let service = FileService()
+
+        try writeText(
+            """
+            ---
+            title: "Initial title"
+            slug: initial-title
+            description: "D"
+            date: 2026-01-01
+            ownership: work
+            tags: []
+            ---
+
+            Initial body.
+            """,
+            to: url
+        )
+
+        let first = try await service.readProject(at: url)
+        XCTAssertEqual(first.frontmatter.title, "Initial title")
+        XCTAssertEqual(first.body.trimmingCharacters(in: .whitespacesAndNewlines), "Initial body.")
+
+        var updated = first
+        updated.frontmatter.title = "Updated title"
+        updated.frontmatter.slug = "updated-title"
+        updated.frontmatter.date = "2026-01-02"
+        updated.body = "Updated body.\n"
+        try await service.writeProject(updated, to: url)
+
+        let second = try await service.readProject(at: url)
+        XCTAssertEqual(second.frontmatter.title, "Updated title")
+        XCTAssertEqual(second.body.trimmingCharacters(in: .whitespacesAndNewlines), "Updated body.")
+    }
+
+    func testFileServiceDeleteProjectRemovesFile() async throws {
+        let root = makeTempDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let url = root.appending(path: "to-delete.mdx", directoryHint: .notDirectory)
+        let service = FileService()
+
+        try writeText(
+            """
+            ---
+            title: "Delete me"
+            slug: delete-me
+            description: "D"
+            date: 2026-01-01
+            ownership: work
+            tags: []
+            ---
+
+            Body.
+            """,
+            to: url
+        )
+
+        XCTAssertTrue(FileManager.default.fileExists(atPath: url.path(percentEncoded: false)))
+        try await service.deleteProject(at: url)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: url.path(percentEncoded: false)))
+    }
+
+    func testFileServiceReadProjectRepairsMissingSlugAndOwnership() async throws {
+        let root = makeTempDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let url = root.appending(path: "legacy-project.mdx", directoryHint: .notDirectory)
+        let service = FileService()
+
+        try writeText(
+            """
+            ---
+            title: "Legacy"
+            description: "D"
+            date: 2026-01-01
+            tags: []
+            ---
+
+            Legacy body.
+            """,
+            to: url
+        )
+
+        let read = try await service.readProject(at: url)
+        XCTAssertEqual(read.frontmatter.slug, "legacy-project")
+        XCTAssertEqual(read.frontmatter.ownership, .work)
+
+        let reread = try await service.readProject(at: url)
+        XCTAssertEqual(reread.frontmatter.slug, "legacy-project")
+        XCTAssertEqual(reread.frontmatter.ownership, .work)
+    }
+
+    func testFileServiceReadProjectRefreshesCacheAfterExternalChange() async throws {
+        let root = makeTempDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        var url = root.appending(path: "cache-refresh.mdx", directoryHint: .notDirectory)
+        let service = FileService()
+
+        try writeText(
+            """
+            ---
+            title: "Version one"
+            slug: cache-refresh
+            description: "D"
+            date: 2026-01-01
+            ownership: work
+            tags: []
+            ---
+
+            Body one.
+            """,
+            to: url
+        )
+
+        let first = try await service.readProject(at: url)
+        XCTAssertEqual(first.frontmatter.title, "Version one")
+
+        try writeText(
+            """
+            ---
+            title: "Version two"
+            slug: cache-refresh
+            description: "D"
+            date: 2026-01-01
+            ownership: work
+            tags: []
+            ---
+
+            Body two.
+            """,
+            to: url
+        )
+        try FileManager.default.setAttributes(
+            [.modificationDate: Date().addingTimeInterval(5)],
+            ofItemAtPath: url.path(percentEncoded: false)
+        )
+        url.removeAllCachedResourceValues()
+
+        let second = try await service.readProject(at: url)
+        XCTAssertEqual(second.frontmatter.title, "Version two")
+        XCTAssertEqual(second.body.trimmingCharacters(in: .whitespacesAndNewlines), "Body two.")
+    }
+
+    private func makeTempDirectory() -> URL {
+        let dir = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir
+    }
+
+    private func writeText(_ text: String, to url: URL) throws {
+        try FileManager.default.createDirectory(
+            at: url.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try text.write(to: url, atomically: true, encoding: .utf8)
+    }
+}
+
+@MainActor
+final class CMSStorePipelineTests: XCTestCase {
+    func testReloadProjectMissingFileRemovesSelectionAndCompletes() async throws {
+        let repoRoot = makeTempRepo()
+        defer { tearDownTempRepo(repoRoot) }
+        RepoConstants.setRepoRoot(repoRoot)
+        defer { RepoConstants.resetToDefaultRepoRoot() }
+
+        let fileName = "reload-delete.mdx"
+        var projectURL = repoRoot
+            .appending(path: "src/content/projects", directoryHint: .isDirectory)
+            .appending(path: fileName, directoryHint: .notDirectory)
+        try writeText(validProjectMDX(fileName: fileName, title: "Original"), to: projectURL)
+
+        let store = CMSStore()
+        await store.reloadProject(at: projectURL)
+        store.selectedProjectFileName = fileName
+        XCTAssertEqual(store.projects.count, 1)
+
+        try FileManager.default.removeItem(at: projectURL)
+        await store.reloadProject(at: projectURL)
+
+        XCTAssertTrue(store.projects.isEmpty)
+        XCTAssertNil(store.selectedProjectFileName)
+        XCTAssertEqual(store.projectReloadPipelineState, .complete(total: 1))
+    }
+
+    func testReloadProjectExistingFileUpdatesStoreAndResetsDirty() async throws {
+        let repoRoot = makeTempRepo()
+        defer { tearDownTempRepo(repoRoot) }
+        RepoConstants.setRepoRoot(repoRoot)
+        defer { RepoConstants.resetToDefaultRepoRoot() }
+
+        let fileName = "reload-update.mdx"
+        var projectURL = repoRoot
+            .appending(path: "src/content/projects", directoryHint: .isDirectory)
+            .appending(path: fileName, directoryHint: .notDirectory)
+        try writeText(validProjectMDX(fileName: fileName, title: "First"), to: projectURL)
+
+        let store = CMSStore()
+        await store.reloadProject(at: projectURL)
+        XCTAssertEqual(store.projects.first?.frontmatter.title, "First")
+
+        try writeText(validProjectMDX(fileName: fileName, title: "Second"), to: projectURL)
+        try FileManager.default.setAttributes(
+            [.modificationDate: Date().addingTimeInterval(120)],
+            ofItemAtPath: projectURL.path(percentEncoded: false)
+        )
+        projectURL.removeAllCachedResourceValues()
+
+        await store.reloadProject(at: projectURL)
+
+        XCTAssertEqual(store.projects.first?.frontmatter.title, "Second")
+        XCTAssertFalse(store.isProjectDirty(fileName))
+        XCTAssertEqual(store.projectReloadPipelineState, .complete(total: 1))
+    }
+
+    func testSaveProjectValidationFailureSetsErrorStateAndTelemetry() async throws {
+        let repoRoot = makeTempRepo()
+        defer { tearDownTempRepo(repoRoot) }
+        RepoConstants.setRepoRoot(repoRoot)
+        defer { RepoConstants.resetToDefaultRepoRoot() }
+
+        let fileName = "save-invalid.mdx"
+        let projectURL = repoRoot
+            .appending(path: "src/content/projects", directoryHint: .isDirectory)
+            .appending(path: fileName, directoryHint: .notDirectory)
+        try writeText(validProjectMDX(fileName: fileName, title: "Valid"), to: projectURL)
+
+        let store = CMSStore()
+        var doc = try MDXParser.parse(validProjectMDX(fileName: fileName, title: "Valid"), fileName: fileName)
+        doc.frontmatter.slug = ""
+        store.projects = [doc]
+        await store.saveProject(fileName)
+
+        guard case .error(let target, let message) = store.savePipelineState else {
+            XCTFail("Expected save pipeline error state")
+            return
+        }
+        XCTAssertEqual(target, fileName)
+        XCTAssertFalse(message.isEmpty)
+        XCTAssertGreaterThan(store.pipelineTelemetry.saveFailures, 0)
+    }
+
+    // MARK: - Helpers
+
+    private func makeTempRepo() -> URL {
+        let root = FileManager.default.temporaryDirectory
+            .appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        let content = root.appending(path: "src/content", directoryHint: .isDirectory)
+        let projects = content.appending(path: "projects", directoryHint: .isDirectory)
+        try? FileManager.default.createDirectory(at: projects, withIntermediateDirectories: true)
+        return root
+    }
+
+    private func tearDownTempRepo(_ root: URL) {
+        try? FileManager.default.removeItem(at: root)
+    }
+
+    private func writeText(_ text: String, to url: URL) throws {
+        try FileManager.default.createDirectory(
+            at: url.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try text.write(to: url, atomically: true, encoding: .utf8)
+    }
+
+    private func validProjectMDX(fileName: String, title: String) -> String {
+        let slug = fileName.replacingOccurrences(of: ".mdx", with: "")
+        return """
+        ---
+        title: "\(title)"
+        slug: \(slug)
+        description: "Desc"
+        date: 2026-01-01
+        ownership: work
+        tags: []
+        ---
+
+        Body
+        """
+    }
 }

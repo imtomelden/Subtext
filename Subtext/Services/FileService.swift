@@ -3,6 +3,13 @@ import Foundation
 /// All file I/O for the CMS. Actor-isolated so concurrent reads/writes never
 /// overlap.
 actor FileService {
+    private struct CachedProject {
+        let modificationDate: Date
+        let document: ProjectDocument
+    }
+
+    private var projectCache: [URL: CachedProject] = [:]
+
     enum FileError: LocalizedError {
         case fileMissing(URL)
         case decodingFailed(URL, String)
@@ -124,6 +131,12 @@ actor FileService {
     }
 
     func readProject(at url: URL) throws -> ProjectDocument {
+        let knownModificationDate = fileModificationDate(at: url)
+        if let cached = projectCache[url],
+           abs(cached.modificationDate.timeIntervalSince(knownModificationDate)) <= 1 {
+            return cached.document
+        }
+
         let raw = try readString(at: url)
         var doc = try MDXParser.parse(raw, fileName: url.lastPathComponent)
         var needsRewrite = false
@@ -151,6 +164,9 @@ actor FileService {
         if needsRewrite {
             try atomicWrite(Data(MDXSerialiser.serialise(doc).utf8), to: url)
         }
+
+        let updatedModificationDate = needsRewrite ? fileModificationDate(at: url) : knownModificationDate
+        projectCache[url] = CachedProject(modificationDate: updatedModificationDate, document: doc)
         return doc
     }
 
@@ -158,6 +174,7 @@ actor FileService {
         let text = MDXSerialiser.serialise(document)
         try validateMDXRoundTrip(text, original: document, url: url)
         try atomicWrite(Data(text.utf8), to: url)
+        projectCache[url] = CachedProject(modificationDate: fileModificationDate(at: url), document: document)
     }
 
     func deleteProject(at url: URL) throws {
@@ -165,6 +182,7 @@ actor FileService {
         if fm.fileExists(atPath: url.path(percentEncoded: false)) {
             try fm.removeItem(at: url)
         }
+        projectCache.removeValue(forKey: url)
     }
 
     // MARK: - Schema validation
@@ -261,5 +279,9 @@ actor FileService {
         let escaped = NSRegularExpression.escapedPattern(for: key)
         let pattern = #"(?m)^\#(escaped)\s*:"# 
         return frontmatter.range(of: pattern, options: .regularExpression) != nil
+    }
+
+    private func fileModificationDate(at url: URL) -> Date {
+        (try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
     }
 }

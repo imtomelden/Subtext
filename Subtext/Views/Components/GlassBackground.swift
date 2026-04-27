@@ -16,10 +16,13 @@ enum SubtextUI {
 
     enum Typography {
         static let title = Font.title3.weight(.semibold)
+        static let sectionTitle = Font.title3.weight(.semibold)
         static let body = Font.callout
         static let bodyStrong = Font.callout.weight(.medium)
+        static let labelStrong = Font.caption.weight(.semibold)
         static let caption = Font.caption
         static let captionMuted = Font.caption2
+        static let microLabel = Font.caption2.weight(.bold)
     }
 
     enum Spacing {
@@ -29,6 +32,23 @@ enum SubtextUI {
         static let large: CGFloat = 16
         static let xLarge: CGFloat = 24
         static let xxLarge: CGFloat = 32
+    }
+
+    enum Radius {
+        static let tiny: CGFloat = 7
+        static let small: CGFloat = 9
+        static let medium: CGFloat = 10
+        static let large: CGFloat = 12
+        static let xLarge: CGFloat = 14
+    }
+
+    enum Surface {
+        static let subtleFill = Color.subtextSubtleFill
+        static let subtleHover = Color.primary.opacity(0.06)
+        static let selectionFill = Color.subtextAccent.opacity(0.13)
+        static let warningFill = Color.subtextWarning.opacity(0.18)
+        static let warningBannerFill = Color.subtextWarning.opacity(0.14)
+        static let dashedStroke = Color.secondary.opacity(0.45)
     }
 }
 

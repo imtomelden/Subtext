@@ -7,11 +7,7 @@ struct SiteSettingsView: View {
     @AppStorage("SubtextContentDensityCompact") private var useCompactDensity = false
     @AppStorage("SubtextAppearanceMode") private var appearanceModeRaw = AppAppearanceMode.system.rawValue
     @AppStorage("SubtextProjectLiveMarkdownPreviewEnabled") private var liveMarkdownEnabled = true
-    @State private var showHistory = false
-    @State private var showSourcePreview = false
-    @State private var showAssetBrowser = false
-    @State private var showSiteHealth = false
-    @State private var showEventLog = false
+    @State private var activeModal: ActiveModal?
     @State private var repoRootPath: String = RepoConstants.repoRoot.path(percentEncoded: false)
     @State private var repoSelectionError: String?
 
@@ -110,6 +106,20 @@ struct SiteSettingsView: View {
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
+
+                    Section {
+                        pipelineTelemetryPanel
+                    } header: {
+                        Text("Pipeline telemetry")
+                            .font(.caption)
+                            .textCase(.uppercase)
+                            .tracking(0.6)
+                            .foregroundStyle(.secondary)
+                    } footer: {
+                        Text("In-session counters for reload/save coalescing behavior. Use with Event log and Performance baseline to validate Phase 4 responsiveness.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                 }
                 .formStyle(.grouped)
                 .scrollContentBackground(.hidden)
@@ -122,30 +132,31 @@ struct SiteSettingsView: View {
             .padding(.top, 28)
             .padding(.bottom, 80)
         }
-        .sheet(isPresented: $showHistory) {
-            SiteHistoryPanel()
-        }
-        .sheet(isPresented: $showSourcePreview) {
-            SourcePreviewDrawer(source: .site(store.siteSettings)) {
-                showSourcePreview = false
+        .sheet(item: $activeModal) { modal in
+            switch modal {
+            case .history:
+                SiteHistoryPanel()
+            case .sourcePreview:
+                SourcePreviewDrawer(source: .site(store.siteSettings)) {
+                    activeModal = nil
+                }
+            case .assetBrowser:
+                AssetBrowserSheet()
+            case .siteHealth:
+                SiteHealthSheet()
+            case .eventLog:
+                EventLogSheet()
+            case .performanceBaseline:
+                PerformanceBaselineSheet()
             }
-        }
-        .sheet(isPresented: $showAssetBrowser) {
-            AssetBrowserSheet()
-        }
-        .sheet(isPresented: $showSiteHealth) {
-            SiteHealthSheet()
-        }
-        .sheet(isPresented: $showEventLog) {
-            EventLogSheet()
         }
         .onChange(of: store.presentEventLogToken) { _, token in
             if token != nil {
-                showEventLog = true
+                activeModal = .eventLog
             }
         }
-        .onChange(of: showEventLog) { _, isShowing in
-            if !isShowing {
+        .onChange(of: activeModal) { _, modal in
+            if modal != .eventLog {
                 store.clearPresentEventLogRequest()
             }
         }
@@ -177,6 +188,8 @@ struct SiteSettingsView: View {
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
                     .buttonStyle(.borderless)
+                    .accessibilityLabel("Switch website folder to \(entry.label)")
+                    .accessibilityHint("Reloads content from this repository.")
                 }
             }
             .padding(.top, 6)
@@ -200,23 +213,30 @@ struct SiteSettingsView: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 10) {
                 Button {
-                    showAssetBrowser = true
+                    activeModal = .assetBrowser
                 } label: {
                     Label("Browse assets…", systemImage: "photo.stack")
                 }
                 .buttonStyle(.bordered)
 
                 Button {
-                    showSiteHealth = true
+                    activeModal = .siteHealth
                 } label: {
                     Label("Run site audit…", systemImage: "stethoscope")
                 }
                 .buttonStyle(.bordered)
 
                 Button {
-                    showEventLog = true
+                    activeModal = .eventLog
                 } label: {
                     Label(eventLogLabel, systemImage: "list.bullet.rectangle")
+                }
+                .buttonStyle(.bordered)
+
+                Button {
+                    activeModal = .performanceBaseline
+                } label: {
+                    Label("Performance baseline…", systemImage: "gauge.with.dots.needle.67percent")
                 }
                 .buttonStyle(.bordered)
 
@@ -258,6 +278,9 @@ struct SiteSettingsView: View {
                     .truncationMode(.middle)
                     .textSelection(.enabled)
             }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Current website repository path")
+            .accessibilityValue(repoRootPath)
 
             HStack(spacing: 10) {
                 Button {
@@ -311,6 +334,106 @@ struct SiteSettingsView: View {
     }
 
     @ViewBuilder
+    private var pipelineTelemetryPanel: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 12) {
+                Text("Reload")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                telemetryPill("Req", value: store.pipelineTelemetry.reloadRequests)
+                telemetryPill("Sup", value: store.pipelineTelemetry.reloadSuperseded)
+                telemetryPill("Err", value: store.pipelineTelemetry.reloadFailures)
+                Spacer()
+                Text(reloadStateLabel)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Reload pipeline telemetry")
+            .accessibilityValue(
+                "Requests \(store.pipelineTelemetry.reloadRequests), superseded \(store.pipelineTelemetry.reloadSuperseded), failures \(store.pipelineTelemetry.reloadFailures), \(reloadStateLabel)"
+            )
+
+            HStack(spacing: 12) {
+                Text("Save")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                telemetryPill("Req", value: store.pipelineTelemetry.saveRequests)
+                telemetryPill("Sup", value: store.pipelineTelemetry.saveSuperseded)
+                telemetryPill("Err", value: store.pipelineTelemetry.saveFailures)
+                Spacer()
+                Text(saveStateLabel)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Save pipeline telemetry")
+            .accessibilityValue(
+                "Requests \(store.pipelineTelemetry.saveRequests), superseded \(store.pipelineTelemetry.saveSuperseded), failures \(store.pipelineTelemetry.saveFailures), \(saveStateLabel)"
+            )
+        }
+        .padding(.vertical, 2)
+    }
+
+    @ViewBuilder
+    private func telemetryPill(_ label: String, value: Int) -> some View {
+        HStack(spacing: 4) {
+            Text(label)
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.secondary)
+            Text("\(value)")
+                .font(.caption.monospacedDigit().weight(.medium))
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(.quaternary.opacity(0.5), in: Capsule())
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(telemetryPillLabel(label))
+        .accessibilityValue("\(value)")
+    }
+
+    private func telemetryPillLabel(_ label: String) -> String {
+        switch label {
+        case "Req":
+            return "Requests"
+        case "Sup":
+            return "Superseded"
+        case "Err":
+            return "Failures"
+        default:
+            return label
+        }
+    }
+
+    private var reloadStateLabel: String {
+        switch store.projectReloadPipelineState {
+        case .idle:
+            return "State: idle"
+        case .running(let total):
+            return "State: running (\(total))"
+        case .partial(let completed, let total):
+            return "State: partial (\(completed)/\(total))"
+        case .complete(let total):
+            return "State: complete (\(total))"
+        case .error(let message):
+            return "State: error (\(message))"
+        }
+    }
+
+    private var saveStateLabel: String {
+        switch store.savePipelineState {
+        case .idle:
+            return "State: idle"
+        case .running(let target):
+            return "State: running (\(target))"
+        case .complete(let target):
+            return "State: complete (\(target))"
+        case .error(let target, let message):
+            return "State: error (\(target): \(message))"
+        }
+    }
+
+    @ViewBuilder
     private var header: some View {
         HStack(alignment: .firstTextBaseline) {
             VStack(alignment: .leading, spacing: 4) {
@@ -329,7 +452,7 @@ struct SiteSettingsView: View {
                 )
 
                 Button {
-                    showSourcePreview = true
+                    activeModal = .sourcePreview
                 } label: {
                     Image(systemName: "curlybraces")
                 }
@@ -338,7 +461,7 @@ struct SiteSettingsView: View {
                 .buttonStyle(.bordered)
 
                 Button {
-                    showHistory = true
+                    activeModal = .history
                 } label: {
                     Image(systemName: "clock.arrow.circlepath")
                 }
@@ -348,6 +471,17 @@ struct SiteSettingsView: View {
             }
         }
         .padding(.horizontal, 28)
+    }
+
+    private enum ActiveModal: String, Identifiable {
+        case history
+        case sourcePreview
+        case assetBrowser
+        case siteHealth
+        case eventLog
+        case performanceBaseline
+
+        var id: String { rawValue }
     }
 }
 

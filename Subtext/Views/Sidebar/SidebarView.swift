@@ -28,6 +28,7 @@ struct SidebarView: View {
             }
             .listStyle(.sidebar)
             .scrollContentBackground(.hidden)
+            .padding(.top, SubtextUI.Spacing.xSmall)
 
             Spacer()
 
@@ -46,7 +47,7 @@ struct SidebarView: View {
     private var brandHeader: some View {
         HStack(spacing: 9) {
             ZStack {
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                RoundedRectangle(cornerRadius: SubtextUI.Radius.small, style: .continuous)
                     .fill(Color.subtextAccent.opacity(0.14))
                 Image(systemName: "text.append")
                     .font(.system(size: 13, weight: .semibold))
@@ -84,13 +85,13 @@ struct SidebarView: View {
             dirtyBadge(count: store.dirtyCount(for: tab))
         }
         .padding(.horizontal, 10)
-        .padding(.vertical, 8)
+        .padding(.vertical, SubtextUI.Spacing.small)
         .background(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
+            RoundedRectangle(cornerRadius: SubtextUI.Radius.medium, style: .continuous)
                 .fill(
                     isActive
-                        ? Color.subtextAccent.opacity(0.13)
-                        : (isHovered ? Color.primary.opacity(0.06) : Color.clear)
+                        ? SubtextUI.Surface.selectionFill
+                        : (isHovered ? SubtextUI.Surface.subtleHover : Color.clear)
                 )
         )
         .overlay(alignment: .leading) {
@@ -100,7 +101,7 @@ struct SidebarView: View {
                 .opacity(isActive ? 1 : 0)
                 .padding(.leading, 4)
         }
-        .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .contentShape(RoundedRectangle(cornerRadius: SubtextUI.Radius.medium, style: .continuous))
     }
 
     /// Compact unsaved-count indicator. 0 hides the badge; 1 shows a dot;

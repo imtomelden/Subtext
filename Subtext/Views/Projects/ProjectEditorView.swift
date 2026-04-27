@@ -1,4 +1,5 @@
 import AppKit
+import OSLog
 import SwiftUI
 
 struct ProjectEditorView: View {
@@ -12,6 +13,7 @@ struct ProjectEditorView: View {
     @AppStorage("SubtextProjectLiveMarkdownPreviewEnabled") private var liveMarkdownEnabled = true
     @AppStorage("SubtextEditorUseMonospacedSourceFont") private var useMonospacedSourceFont = true
     @AppStorage("SubtextEditorPreviewLineSpacing") private var previewLineSpacing = 4.0
+    @AppStorage("SubtextProjectFocusModeEnabled") private var focusModeEnabled = false
     @State private var frontmatterExpanded = true
     @State private var advancedExpanded = false
     @State private var videoMetaExpanded = false
@@ -22,8 +24,10 @@ struct ProjectEditorView: View {
     @State private var showSourcePreview = false
     @State private var editorMode: EditorMode = .split
     @State private var bodySelection: NSRange = NSRange(location: 0, length: 0)
+    @State private var validationIssues: [ProjectValidationIssue] = []
+    @State private var isValidating = false
 
-    private enum EditorMode: String, CaseIterable, Identifiable {
+    fileprivate enum EditorMode: String, CaseIterable, Identifiable {
         case edit
         case split
         case preview
@@ -40,14 +44,21 @@ struct ProjectEditorView: View {
     }
 
     var body: some View {
+        editorContent
+    }
+
+    @ViewBuilder
+    private var editorContent: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: density.sectionOuterSpacing) {
                 toolbar
-                frontmatterPanel
-                    .padding(.horizontal, horizontalPadding)
+                if !focusModeEnabled {
+                    frontmatterPanel
+                        .padding(.horizontal, horizontalPadding)
 
-                blocksCanvas
-                    .padding(.horizontal, horizontalPadding)
+                    blocksCanvas
+                        .padding(.horizontal, horizontalPadding)
+                }
 
                 bodyEditor
                     .padding(.horizontal, horizontalPadding)
@@ -55,6 +66,20 @@ struct ProjectEditorView: View {
             }
             .padding(.top, density.canvasTopPadding)
         }
+        .modifier(ProjectEditorLifecycleModifier(
+            liveMarkdownEnabled: liveMarkdownEnabled,
+            editorMode: $editorMode,
+            document: $document,
+            slugManuallyEdited: $slugManuallyEdited,
+            advancedExpanded: $advancedExpanded,
+            videoMetaExpanded: $videoMetaExpanded,
+            caseStudyExpanded: $caseStudyExpanded,
+            heroExpanded: $heroExpanded,
+            didLoadDisclosureState: $didLoadDisclosureState,
+            validationIssues: $validationIssues,
+            isValidating: $isValidating,
+            store: store
+        ))
         .onReceive(NotificationCenter.default.publisher(for: .subtextMoveItemUp)) { _ in
             moveSelectedBlock(by: -1)
         }
@@ -76,45 +101,6 @@ struct ProjectEditorView: View {
         .onReceive(NotificationCenter.default.publisher(for: .subtextProjectTogglePreviewMode)) { _ in
             cycleEditorMode()
         }
-        .onChange(of: liveMarkdownEnabled) { _, enabled in
-            if !enabled {
-                editorMode = .edit
-            } else if editorMode == .edit {
-                editorMode = .split
-            }
-        }
-        .onChange(of: document.frontmatter.title) { _, title in
-            guard !slugManuallyEdited else { return }
-            document.frontmatter.slug = Self.slugify(title)
-        }
-        .onChange(of: document.frontmatter.slug) { oldValue, newValue in
-            if !newValue.isEmpty && newValue != Self.slugify(document.frontmatter.title) && newValue != oldValue {
-                slugManuallyEdited = true
-            }
-        }
-        .onAppear {
-            // Restore the per-repo disclosure state once. Subsequent
-            // toggles flow back to `.subtext/preferences.json` via the
-            // onChange handlers below.
-            guard !didLoadDisclosureState else { return }
-            didLoadDisclosureState = true
-            advancedExpanded = store.expandedDisclosure("project.advanced", default: false)
-            videoMetaExpanded = store.expandedDisclosure("project.videoMeta", default: false)
-            caseStudyExpanded = store.expandedDisclosure("project.caseStudy", default: false)
-            heroExpanded = store.expandedDisclosure("project.hero", default: false)
-        }
-        .onChange(of: advancedExpanded) { _, value in
-            store.recordExpandedDisclosure("project.advanced", isExpanded: value)
-        }
-        .onChange(of: videoMetaExpanded) { _, value in
-            store.recordExpandedDisclosure("project.videoMeta", isExpanded: value)
-        }
-        .onChange(of: caseStudyExpanded) { _, value in
-            store.recordExpandedDisclosure("project.caseStudy", isExpanded: value)
-        }
-        .onChange(of: heroExpanded) { _, value in
-            store.recordExpandedDisclosure("project.hero", isExpanded: value)
-        }
     }
 
     private func moveSelectedBlock(by delta: Int) {
@@ -133,54 +119,75 @@ struct ProjectEditorView: View {
 
     @ViewBuilder
     private var toolbar: some View {
-        HStack {
-            Button {
-                onBack()
-            } label: {
-                Label("Projects", systemImage: "chevron.left")
+        GlassSurface(prominence: .regular, cornerRadius: SubtextUI.Radius.xLarge) {
+            HStack(spacing: SubtextUI.Spacing.medium) {
+                Button {
+                    onBack()
+                } label: {
+                    Label("Projects", systemImage: "chevron.left")
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
+                .accessibilityLabel("Back to projects list")
+
+                Spacer()
+
+                HStack(spacing: SubtextUI.Spacing.small) {
+                    AutosaveIndicator(
+                        isDirty: store.isProjectDirty(document.fileName),
+                        lastPersistedAt: store.lastDraftPersistedAt
+                    )
+
+                    RevealInFinderButton(
+                        url: projectFileURL,
+                        helpText: "Reveal \(document.fileName) in Finder"
+                    )
+
+                    Button {
+                        showSourcePreview = true
+                    } label: {
+                        Image(systemName: "curlybraces")
+                    }
+                    .help("Preview MDX source")
+                    .accessibilityLabel("Preview source")
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+
+                    Button {
+                        onShowHistory()
+                    } label: {
+                        Image(systemName: "clock.arrow.circlepath")
+                    }
+                    .help("Version history")
+                    .accessibilityLabel("Version history")
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.18)) {
+                            focusModeEnabled.toggle()
+                        }
+                    } label: {
+                        Image(systemName: focusModeEnabled ? "rectangle.inset.filled.and.person.filled" : "rectangle.inset.filled")
+                    }
+                    .help(focusModeEnabled ? "Disable focus mode" : "Enable focus mode")
+                    .accessibilityLabel(focusModeEnabled ? "Disable focus mode" : "Enable focus mode")
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .tint(focusModeEnabled ? Color.subtextAccent : nil)
+
+                    Button {
+                        onAddBlock()
+                    } label: {
+                        Label("Add block", systemImage: "plus")
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(Color.subtextAccent)
+                    .controlSize(.small)
+                }
             }
-            .buttonStyle(.plain)
-            .foregroundStyle(.secondary)
-
-            Spacer()
-
-            HStack(spacing: 10) {
-                AutosaveIndicator(
-                    isDirty: store.isProjectDirty(document.fileName),
-                    lastPersistedAt: store.lastDraftPersistedAt
-                )
-
-                RevealInFinderButton(
-                    url: projectFileURL,
-                    helpText: "Reveal \(document.fileName) in Finder"
-                )
-
-                Button {
-                    showSourcePreview = true
-                } label: {
-                    Image(systemName: "curlybraces")
-                }
-                .help("Preview MDX source")
-                .accessibilityLabel("Preview source")
-                .buttonStyle(.bordered)
-
-                Button {
-                    onShowHistory()
-                } label: {
-                    Image(systemName: "clock.arrow.circlepath")
-                }
-                .help("Version history")
-                .accessibilityLabel("Version history")
-                .buttonStyle(.bordered)
-
-                Button {
-                    onAddBlock()
-                } label: {
-                    Label("Add block", systemImage: "plus")
-                }
-                .buttonStyle(.borderedProminent)
-                .tint(Color.subtextAccent)
-            }
+            .padding(.horizontal, SubtextUI.Spacing.large)
+            .padding(.vertical, SubtextUI.Spacing.medium)
         }
         .padding(.horizontal, horizontalPadding)
         .sheet(isPresented: $showSourcePreview) {
@@ -199,13 +206,9 @@ struct ProjectEditorView: View {
         density == .compact ? 20 : 28
     }
 
-    private var validationIssues: [ProjectValidationIssue] {
-        ProjectValidator.validate(document)
-    }
-
     @ViewBuilder
     private var frontmatterPanel: some View {
-        GlassSurface(prominence: .interactive, cornerRadius: 14) {
+        GlassSurface(prominence: .interactive, cornerRadius: SubtextUI.Radius.xLarge) {
             VStack(alignment: .leading, spacing: 0) {
                 Button {
                     withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
@@ -224,13 +227,19 @@ struct ProjectEditorView: View {
                         if !validationIssues.isEmpty {
                             collapsedValidationChip
                         }
+                        if isValidating {
+                            validatingChip
+                        }
                         Image(systemName: "chevron.right")
                             .rotationEffect(.degrees(frontmatterExpanded ? 90 : 0))
                             .foregroundStyle(.secondary)
                     }
-                    .padding(18)
+                    .padding(SubtextUI.Spacing.large + 2)
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("Project frontmatter")
+                .accessibilityValue(frontmatterExpanded ? "Expanded" : "Collapsed")
+                .accessibilityHint("Shows required metadata fields before saving.")
 
                 if frontmatterExpanded {
                     Divider()
@@ -245,6 +254,8 @@ struct ProjectEditorView: View {
                 }
             }
         }
+        .frame(maxWidth: 1_050, alignment: .leading)
+        .frame(maxWidth: .infinity, alignment: .center)
     }
 
     /// Compact indicator surfaced in the collapsed frontmatter header so users
@@ -255,15 +266,29 @@ struct ProjectEditorView: View {
         let count = validationIssues.count
         Label("\(count) to fix", systemImage: "exclamationmark.triangle.fill")
             .labelStyle(.titleAndIcon)
-            .font(.caption.weight(.semibold))
+            .font(SubtextUI.Typography.labelStrong)
             .foregroundStyle(Color.subtextWarning)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 3)
+            .padding(.horizontal, SubtextUI.Spacing.small)
+            .padding(.vertical, SubtextUI.Spacing.xSmall - 1)
             .background(
-                Capsule().fill(Color.subtextWarning.opacity(0.18))
+                Capsule().fill(SubtextUI.Surface.warningFill)
             )
             .help(validationIssues.prefix(5).map { $0.message }.joined(separator: "\n"))
             .accessibilityLabel("\(count) validation issue\(count == 1 ? "" : "s")")
+    }
+
+    @ViewBuilder
+    private var validatingChip: some View {
+        Label("Validating", systemImage: "clock.arrow.trianglehead.counterclockwise.rotate.90")
+            .labelStyle(.titleAndIcon)
+            .font(SubtextUI.Typography.caption)
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, SubtextUI.Spacing.small)
+            .padding(.vertical, SubtextUI.Spacing.xSmall - 1)
+            .background(
+                Capsule().fill(SubtextUI.Surface.subtleFill)
+            )
+            .accessibilityLabel("Validation in progress")
     }
 
     @ViewBuilder
@@ -287,6 +312,7 @@ struct ProjectEditorView: View {
                     }
                     .pickerStyle(.segmented)
                     .labelsHidden()
+                    .accessibilityLabel("Ownership")
                 }
             }
 
@@ -345,11 +371,13 @@ struct ProjectEditorView: View {
                             Label("Draft", systemImage: "pencil.and.list.clipboard")
                         }
                         .toggleStyle(.switch)
-                        .tint(.orange)
+                        .tint(Color.subtextWarning)
                     }
                 }
                 .padding(.top, 8)
             }
+            .accessibilityLabel("Advanced project metadata")
+            .accessibilityValue(advancedExpanded ? "Expanded" : "Collapsed")
 
             DisclosureGroup("Case study", isExpanded: $caseStudyExpanded) {
                 VStack(alignment: .leading, spacing: 12) {
@@ -390,6 +418,8 @@ struct ProjectEditorView: View {
                 }
                 .padding(.top, 8)
             }
+            .accessibilityLabel("Case study details")
+            .accessibilityValue(caseStudyExpanded ? "Expanded" : "Collapsed")
 
             DisclosureGroup("Hero", isExpanded: $heroExpanded) {
                 VStack(alignment: .leading, spacing: 12) {
@@ -413,6 +443,8 @@ struct ProjectEditorView: View {
                 }
                 .padding(.top, 8)
             }
+            .accessibilityLabel("Hero override")
+            .accessibilityValue(heroExpanded ? "Expanded" : "Collapsed")
 
             if document.frontmatter.tags.contains(where: { $0.caseInsensitiveCompare("video") == .orderedSame }) {
                 DisclosureGroup("Video metadata", isExpanded: $videoMetaExpanded) {
@@ -440,120 +472,145 @@ struct ProjectEditorView: View {
                     }
                     .padding(.top, 8)
                 }
+                .accessibilityLabel("Video metadata")
+                .accessibilityValue(videoMetaExpanded ? "Expanded" : "Collapsed")
             }
         }
     }
 
     @ViewBuilder
     private var blocksCanvas: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .firstTextBaseline, spacing: 10) {
-                HStack(spacing: 8) {
-                    Text("Blocks")
-                        .font(.title3.weight(.semibold))
-                    Text("\(document.frontmatter.blocks.count)")
-                        .font(.caption.weight(.medium))
-                        .foregroundStyle(.secondary)
-                        .padding(.horizontal, 7).padding(.vertical, 2)
-                        .background(.quaternary.opacity(0.4), in: Capsule())
+        GlassSurface(prominence: .regular, cornerRadius: SubtextUI.Radius.xLarge) {
+            VStack(alignment: .leading, spacing: SubtextUI.Spacing.small + 2) {
+                HStack(alignment: .firstTextBaseline, spacing: 10) {
+                    HStack(spacing: 8) {
+                        Text("Blocks")
+                            .font(SubtextUI.Typography.sectionTitle)
+                        Text("\(document.frontmatter.blocks.count)")
+                            .font(SubtextUI.Typography.caption)
+                            .foregroundStyle(.secondary)
+                            .padding(.horizontal, 7).padding(.vertical, 2)
+                            .background(SubtextUI.Surface.subtleFill, in: Capsule())
+                    }
+                    if document.frontmatter.blocks.count > 1 {
+                        Label("Use chevrons or ⌘↑/⌘↓ to reorder", systemImage: "chevron.up.chevron.down")
+                            .labelStyle(.titleAndIcon)
+                            .font(.caption)
+                            .foregroundStyle(.tertiary)
+                    }
+                    Spacer()
                 }
-                if document.frontmatter.blocks.count > 1 {
-                    Label("Use chevrons or ⌘↑/⌘↓ to reorder", systemImage: "chevron.up.chevron.down")
-                        .labelStyle(.titleAndIcon)
-                        .font(.caption)
-                        .foregroundStyle(.tertiary)
-                }
-                Spacer()
-            }
 
-            if document.frontmatter.blocks.isEmpty {
-                VStack(spacing: 6) {
-                    Text("No blocks yet").font(.callout.weight(.medium))
-                    Text("Add your first block using the toolbar button.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 30)
-                .background(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .strokeBorder(.tertiary, style: StrokeStyle(lineWidth: 1, dash: [4]))
-                )
-            } else {
-                ReorderableVStack(
-                    items: document.frontmatter.blocks,
-                    spacing: 10
-                ) { from, to in
-                    document.frontmatter.blocks.move(fromOffsets: from, toOffset: to)
-                } row: { block, controls in
-                    BlockCardView(
-                        block: block,
-                        reorderControls: controls,
-                        onEdit: { store.editingBlockID = block.id },
-                        onDelete: { deleteBlock(block) }
+                if document.frontmatter.blocks.isEmpty {
+                    VStack(spacing: 6) {
+                        Text("No blocks yet").font(.callout.weight(.medium))
+                        Text("Add your first block using the toolbar button.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 30)
+                    .background(
+                        RoundedRectangle(cornerRadius: SubtextUI.Radius.large, style: .continuous)
+                            .strokeBorder(SubtextUI.Surface.dashedStroke, style: StrokeStyle(lineWidth: 1, dash: [4]))
                     )
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel("No blocks yet")
+                    .accessibilityHint("Use Add block in the toolbar to insert your first block.")
+                } else {
+                    ReorderableVStack(
+                        items: document.frontmatter.blocks,
+                        spacing: 10
+                    ) { from, to in
+                        document.frontmatter.blocks.move(fromOffsets: from, toOffset: to)
+                    } row: { block, controls in
+                        BlockCardView(
+                            block: block,
+                            reorderControls: controls,
+                            onEdit: { store.editingBlockID = block.id },
+                            onDelete: { deleteBlock(block) }
+                        )
+                    }
                 }
             }
         }
+        .padding(SubtextUI.Spacing.large)
+        .frame(maxWidth: 1_050, alignment: .leading)
+        .frame(maxWidth: .infinity, alignment: .center)
     }
 
     @ViewBuilder
     private var bodyEditor: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .firstTextBaseline, spacing: 10) {
-                Text("Body (markdown)")
-                    .font(.title3.weight(.semibold))
+        GlassSurface(prominence: .regular, cornerRadius: SubtextUI.Radius.xLarge) {
+            VStack(alignment: .leading, spacing: SubtextUI.Spacing.small + 2) {
+                HStack(alignment: .firstTextBaseline, spacing: 10) {
+                    Text("Body (markdown)")
+                        .font(SubtextUI.Typography.sectionTitle)
 
-                Spacer()
+                    Spacer()
+
+                    if liveMarkdownEnabled {
+                        Picker("Editor mode", selection: $editorMode) {
+                            ForEach(EditorMode.allCases) { mode in
+                                Text(mode.label).tag(mode)
+                            }
+                        }
+                        .pickerStyle(.segmented)
+                        .labelsHidden()
+                        .frame(width: 220)
+                        .help("Switch between editing, split, and live preview")
+                        .accessibilityLabel("Editor mode")
+                    }
+
+                    Menu {
+                        Toggle("Monospaced source font", isOn: $useMonospacedSourceFont)
+                        if liveMarkdownEnabled {
+                            Divider()
+                            Picker("Preview line spacing", selection: $previewLineSpacing) {
+                                Text("Tight").tag(2.0)
+                                Text("Default").tag(4.0)
+                                Text("Relaxed").tag(6.0)
+                            }
+                        }
+                    } label: {
+                        Image(systemName: "slider.horizontal.3")
+                    }
+                    .menuStyle(.borderlessButton)
+                    .help("Editor display options")
+                    .accessibilityLabel("Editor display options")
+
+                    MarkdownInsertToolbar(text: $document.body, selection: $bodySelection)
+                }
+
+                if focusModeEnabled {
+                    Label("Focus mode keeps only the body editor visible. Use the inset toggle in the toolbar to restore panels.", systemImage: "rectangle.inset.filled")
+                        .font(SubtextUI.Typography.caption)
+                        .foregroundStyle(.secondary)
+                        .accessibilityLabel("Focus mode enabled. Only body editor is visible.")
+                        .accessibilityHint("Use the focus mode toolbar button to restore frontmatter and block panels.")
+                }
 
                 if liveMarkdownEnabled {
-                    Picker("Editor mode", selection: $editorMode) {
-                        ForEach(EditorMode.allCases) { mode in
-                            Text(mode.label).tag(mode)
+                    HStack(alignment: .top, spacing: SubtextUI.Spacing.medium) {
+                        if editorMode != .preview {
+                            sourceEditor
+                        }
+                        if editorMode != .edit {
+                            LiveMarkdownPreview(
+                                markdown: document.body,
+                                lineSpacing: previewLineSpacing
+                            )
+                            .frame(maxWidth: .infinity, minHeight: 260, alignment: .topLeading)
                         }
                     }
-                    .pickerStyle(.segmented)
-                    .labelsHidden()
-                    .frame(width: 220)
-                    .help("Switch between editing, split, and live preview")
+                } else {
+                    sourceEditor
                 }
-
-                Menu {
-                    Toggle("Monospaced source font", isOn: $useMonospacedSourceFont)
-                    if liveMarkdownEnabled {
-                        Divider()
-                        Picker("Preview line spacing", selection: $previewLineSpacing) {
-                            Text("Tight").tag(2.0)
-                            Text("Default").tag(4.0)
-                            Text("Relaxed").tag(6.0)
-                        }
-                    }
-                } label: {
-                    Image(systemName: "slider.horizontal.3")
-                }
-                .menuStyle(.borderlessButton)
-                .help("Editor display options")
-
-                MarkdownInsertToolbar(text: $document.body, selection: $bodySelection)
-            }
-
-            if liveMarkdownEnabled {
-                HStack(alignment: .top, spacing: 12) {
-                    if editorMode != .preview {
-                        sourceEditor
-                    }
-                    if editorMode != .edit {
-                        LiveMarkdownPreview(
-                            markdown: document.body,
-                            lineSpacing: previewLineSpacing
-                        )
-                        .frame(maxWidth: .infinity, minHeight: 260, alignment: .topLeading)
-                    }
-                }
-            } else {
-                sourceEditor
             }
         }
+        .padding(SubtextUI.Spacing.large)
+        .frame(maxWidth: 1_050, alignment: .leading)
+        .frame(maxWidth: .infinity, alignment: .center)
     }
 
     private var sourceEditor: some View {
@@ -564,9 +621,9 @@ struct ProjectEditorView: View {
         )
         .frame(maxWidth: .infinity, minHeight: 260, alignment: .topLeading)
         .background(
-            GlassSurface(prominence: .interactive, cornerRadius: 12) { Color.clear }
+            GlassSurface(prominence: .interactive, cornerRadius: SubtextUI.Radius.large) { Color.clear }
         )
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: SubtextUI.Radius.large, style: .continuous))
         .accessibilityLabel("Markdown source editor")
     }
 
@@ -585,8 +642,8 @@ struct ProjectEditorView: View {
     private var validationBanner: some View {
         VStack(alignment: .leading, spacing: 6) {
             Label("Required fields need attention before save.", systemImage: "exclamationmark.triangle.fill")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.orange)
+                .font(SubtextUI.Typography.labelStrong)
+                .foregroundStyle(Color.subtextWarning)
             ForEach(Array(validationIssues.prefix(5).enumerated()), id: \.offset) { _, issue in
                 Text("• \(issue.message)")
                     .font(.caption)
@@ -594,7 +651,7 @@ struct ProjectEditorView: View {
             }
         }
         .padding(10)
-        .background(.orange.opacity(0.14), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .background(SubtextUI.Surface.warningBannerFill, in: RoundedRectangle(cornerRadius: SubtextUI.Radius.medium, style: .continuous))
     }
 
     private func deleteBlock(_ block: ProjectBlock) {
@@ -695,7 +752,7 @@ struct ProjectEditorView: View {
         }
     }
 
-    private static func slugify(_ s: String) -> String {
+    fileprivate static func slugify(_ s: String) -> String {
         s.lowercased()
             .replacingOccurrences(of: "'", with: "")
             .replacingOccurrences(of: "\"", with: "")
@@ -706,27 +763,134 @@ struct ProjectEditorView: View {
 
 }
 
+private struct ProjectEditorLifecycleModifier: ViewModifier {
+    let liveMarkdownEnabled: Bool
+    @Binding var editorMode: ProjectEditorView.EditorMode
+    @Binding var document: ProjectDocument
+    @Binding var slugManuallyEdited: Bool
+    @Binding var advancedExpanded: Bool
+    @Binding var videoMetaExpanded: Bool
+    @Binding var caseStudyExpanded: Bool
+    @Binding var heroExpanded: Bool
+    @Binding var didLoadDisclosureState: Bool
+    @Binding var validationIssues: [ProjectValidationIssue]
+    @Binding var isValidating: Bool
+    let store: CMSStore
+    @State private var validationTask: Task<Void, Never>?
+    private let validationClock = ContinuousClock()
+
+    func body(content: Content) -> some View {
+        content
+            .onChange(of: liveMarkdownEnabled) { _, enabled in
+                if !enabled {
+                    editorMode = .edit
+                } else if editorMode == .edit {
+                    editorMode = .split
+                }
+            }
+            .onChange(of: editorMode) { _, mode in
+                store.recordUXEvent("editor.mode.switch", metadata: mode.rawValue)
+            }
+            .onChange(of: document.frontmatter.title) { _, title in
+                guard !slugManuallyEdited else { return }
+                document.frontmatter.slug = ProjectEditorView.slugify(title)
+            }
+            .onChange(of: document.frontmatter.slug) { oldValue, newValue in
+                let autoSlug = ProjectEditorView.slugify(document.frontmatter.title)
+                let didBecomeCustom = !newValue.isEmpty
+                    && newValue != autoSlug
+                    && newValue != oldValue
+                if didBecomeCustom {
+                    slugManuallyEdited = true
+                }
+            }
+            .onChange(of: document) { _, updated in
+                scheduleValidation(for: updated)
+            }
+            .onAppear {
+                restoreDisclosureStateIfNeeded()
+                validationIssues = ProjectValidator.validate(document)
+                isValidating = false
+            }
+            .onDisappear {
+                validationTask?.cancel()
+                validationTask = nil
+                isValidating = false
+            }
+            .onChange(of: advancedExpanded) { _, value in
+                store.recordExpandedDisclosure("project.advanced", isExpanded: value)
+            }
+            .onChange(of: videoMetaExpanded) { _, value in
+                store.recordExpandedDisclosure("project.videoMeta", isExpanded: value)
+            }
+            .onChange(of: caseStudyExpanded) { _, value in
+                store.recordExpandedDisclosure("project.caseStudy", isExpanded: value)
+            }
+            .onChange(of: heroExpanded) { _, value in
+                store.recordExpandedDisclosure("project.hero", isExpanded: value)
+            }
+    }
+
+    private func restoreDisclosureStateIfNeeded() {
+        guard !didLoadDisclosureState else { return }
+        didLoadDisclosureState = true
+        advancedExpanded = store.expandedDisclosure("project.advanced", default: false)
+        videoMetaExpanded = store.expandedDisclosure("project.videoMeta", default: false)
+        caseStudyExpanded = store.expandedDisclosure("project.caseStudy", default: false)
+        heroExpanded = store.expandedDisclosure("project.hero", default: false)
+    }
+
+    private func scheduleValidation(for updated: ProjectDocument) {
+        if validationTask != nil {
+            store.recordUXEvent("validation.coalesce.cancelled", metadata: updated.fileName)
+        }
+        validationTask?.cancel()
+        let debounceNanos: UInt64 = updated.body.count > 8_000 ? 180_000_000 : 70_000_000
+        isValidating = true
+        let started = validationClock.now
+        validationTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: debounceNanos)
+            guard !Task.isCancelled else {
+                isValidating = false
+                return
+            }
+            validationIssues = ProjectValidator.validate(updated)
+            isValidating = false
+            let elapsed = validationClock.now - started
+            let elapsedMs = elapsed.components.seconds * 1_000 + elapsed.components.attoseconds / 1_000_000_000_000_000
+            store.recordUXEvent(
+                "validation.coalesce.completed",
+                metadata: "\(updated.fileName) \(elapsedMs)ms issues=\(validationIssues.count)"
+            )
+        }
+    }
+}
+
 /// Renders markdown as the user types, with a small debounce so large
 /// documents stay responsive while still feeling immediate.
 private struct LiveMarkdownPreview: View {
+    private static let perfLogger = Logger(subsystem: "com.subtext.app", category: "ux.preview")
+    private let previewClock = ContinuousClock()
+
     let markdown: String
     let lineSpacing: CGFloat
 
     @State private var rendered = AttributedString("")
     @State private var renderError: String?
     @State private var renderTask: Task<Void, Never>?
+    private let renderer = MarkdownPreviewRenderer()
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
                 if let renderError {
                     Label(renderError, systemImage: "exclamationmark.triangle.fill")
-                        .font(.caption)
-                        .foregroundStyle(.orange)
+                        .font(SubtextUI.Typography.caption)
+                        .foregroundStyle(Color.subtextWarning)
                         .padding(.horizontal, 12)
                         .padding(.vertical, 8)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(.orange.opacity(0.14), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                        .background(SubtextUI.Surface.warningBannerFill, in: RoundedRectangle(cornerRadius: SubtextUI.Radius.small, style: .continuous))
                 }
 
                 if rendered.characters.isEmpty && markdown.isEmpty {
@@ -743,7 +907,7 @@ private struct LiveMarkdownPreview: View {
             .padding(14)
         }
         .background(
-            GlassSurface(prominence: .interactive, cornerRadius: 12) { Color.clear }
+            GlassSurface(prominence: .interactive, cornerRadius: SubtextUI.Radius.large) { Color.clear }
         )
         .task { scheduleRender(for: markdown) }
         .onChange(of: markdown) { _, updated in
@@ -761,22 +925,54 @@ private struct LiveMarkdownPreview: View {
         renderTask = Task {
             try? await Task.sleep(nanoseconds: debounceNanos)
             guard !Task.isCancelled else { return }
-            await MainActor.run {
-                render(text)
-            }
+            let started = previewClock.now
+            let output = await renderer.render(text: text)
+            guard !Task.isCancelled else { return }
+            rendered = output.rendered
+            renderError = output.errorMessage
+            logRenderLatency(
+                started: started,
+                textLength: text.count,
+                didFallbackToPlainText: output.usedPlainTextFallback
+            )
         }
     }
 
-    private func render(_ text: String) {
+    private func logRenderLatency(
+        started: ContinuousClock.Instant,
+        textLength: Int,
+        didFallbackToPlainText: Bool
+    ) {
+        let elapsed = previewClock.now - started
+        let elapsedMs = elapsed.components.seconds * 1_000 + elapsed.components.attoseconds / 1_000_000_000_000_000
+        let fallback = didFallbackToPlainText ? "fallback" : "ok"
+        Self.perfLogger.info("preview.render \(elapsedMs)ms chars=\(textLength) state=\(fallback)")
+    }
+}
+
+private actor MarkdownPreviewRenderer {
+    struct Output {
+        var rendered: AttributedString
+        var errorMessage: String?
+        var usedPlainTextFallback: Bool
+    }
+
+    func render(text: String) -> Output {
         do {
-            rendered = try AttributedString(
-                markdown: text,
-                options: .init(interpretedSyntax: .full)
+            return Output(
+                rendered: try AttributedString(
+                    markdown: text,
+                    options: .init(interpretedSyntax: .full)
+                ),
+                errorMessage: nil,
+                usedPlainTextFallback: false
             )
-            renderError = nil
         } catch {
-            rendered = AttributedString(text)
-            renderError = "Some markdown could not be parsed. Showing plain text until syntax is fixed."
+            return Output(
+                rendered: AttributedString(text),
+                errorMessage: "Some markdown could not be parsed. Showing plain text until syntax is fixed.",
+                usedPlainTextFallback: true
+            )
         }
     }
 }
