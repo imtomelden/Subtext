@@ -109,15 +109,12 @@ struct CommandPalette: View {
         } else {
             ScrollViewReader { proxy in
                 List(selection: $selection) {
-                    ForEach(results) { item in
-                        PaletteRow(command: item, query: query)
-                            .tag(item.id)
-                            .contentShape(Rectangle())
-                            .onTapGesture {
-                                onSelect(item)
-                                dismiss()
-                            }
-                            .id(item.id)
+                    if mode == .navigate && query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        groupedNavigateResults(results: results)
+                    } else {
+                        ForEach(results) { item in
+                            paletteRow(item)
+                        }
                     }
                 }
                 .listStyle(.plain)
@@ -136,6 +133,54 @@ struct CommandPalette: View {
                 }
             }
         }
+    }
+
+    @ViewBuilder
+    private func groupedNavigateResults(results: [PaletteCommand]) -> some View {
+        let tabs = results.filter { if case .tab = $0 { return true }; return false }
+        let sections = results.filter { if case .section = $0 { return true }; return false }
+        let ctas = results.filter { if case .cta = $0 { return true }; return false }
+        let projects = results.filter { if case .project = $0 { return true }; return false }
+
+        if !tabs.isEmpty {
+            Section(header: groupHeader("Navigation")) {
+                ForEach(tabs) { item in paletteRow(item) }
+            }
+        }
+        if !sections.isEmpty {
+            Section(header: groupHeader("Sections")) {
+                ForEach(sections) { item in paletteRow(item) }
+            }
+        }
+        if !ctas.isEmpty {
+            Section(header: groupHeader("CTAs")) {
+                ForEach(ctas) { item in paletteRow(item) }
+            }
+        }
+        if !projects.isEmpty {
+            Section(header: groupHeader("Projects")) {
+                ForEach(projects) { item in paletteRow(item) }
+            }
+        }
+    }
+
+    private func groupHeader(_ title: String) -> some View {
+        Text(title.uppercased())
+            .font(.caption2.weight(.semibold))
+            .foregroundStyle(Tokens.Text.tertiary)
+            .kerning(0.6)
+            .listRowBackground(Tokens.Background.sunken)
+    }
+
+    private func paletteRow(_ item: PaletteCommand) -> some View {
+        PaletteRow(command: item, query: query)
+            .tag(item.id)
+            .contentShape(Rectangle())
+            .onTapGesture {
+                onSelect(item)
+                dismiss()
+            }
+            .id(item.id)
     }
 
     @ViewBuilder
@@ -389,17 +434,19 @@ private struct PaletteRow: View {
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 12) {
             Image(systemName: iconName)
+                .font(.system(size: 14, weight: .medium))
                 .foregroundStyle(tint)
                 .frame(width: 22)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(primary)
                     .font(.callout.weight(.medium))
+                    .foregroundStyle(Tokens.Text.primary)
                     .lineLimit(1)
                 if let secondary {
                     Text(secondary)
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Tokens.Text.tertiary)
                         .lineLimit(1)
                         .truncationMode(.middle)
                 }
@@ -407,11 +454,12 @@ private struct PaletteRow: View {
 
             Spacer()
 
-            Text(shortcutHint)
-                .font(.caption2.monospaced())
-                .foregroundStyle(.tertiary)
+            if let keys = shortcutKeys {
+                KeyCapsuleHint(keys: keys)
+            }
         }
-        .padding(.vertical, 2)
+        .padding(.vertical, 3)
+        .frame(minHeight: 36)
     }
 
     private var iconName: String {
@@ -426,7 +474,7 @@ private struct PaletteRow: View {
 
     private var tint: Color {
         switch command {
-        case .tab: .secondary
+        case .tab: Tokens.Text.secondary
         case .section, .cta: Color.subtextAccent
         case .project: .blue
         case .bodyHit: Color.subtextWarning
@@ -453,13 +501,41 @@ private struct PaletteRow: View {
         }
     }
 
-    private var shortcutHint: String {
+    private var shortcutKeys: [String]? {
         switch command {
-        case .tab: "Tab"
-        case .section: "Section"
-        case .cta: "CTA"
-        case .project: "Project"
-        case .bodyHit: "Match"
+        case .tab(let t):
+            switch t {
+            case .home:     return ["⌘", "1"]
+            case .projects: return ["⌘", "2"]
+            case .settings: return ["⌘", ","]
+            }
+        default: return nil
+        }
+    }
+}
+
+// MARK: - Key Capsule Hint
+
+private struct KeyCapsuleHint: View {
+    let keys: [String]
+
+    var body: some View {
+        HStack(spacing: 2) {
+            ForEach(keys, id: \.self) { key in
+                Text(key)
+                    .font(.caption2.monospaced())
+                    .foregroundStyle(Tokens.Text.tertiary)
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 3)
+                    .background(
+                        RoundedRectangle(cornerRadius: 4, style: .continuous)
+                            .fill(Tokens.Background.elevated)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                    .strokeBorder(Tokens.Border.subtle, lineWidth: 0.5)
+                            )
+                    )
+            }
         }
     }
 }

@@ -109,6 +109,8 @@ enum MDXSerialiser {
             var l = ["  - type: headerImage", "    \(keyValue("src", raw: b.src))"]
             if let alt = b.alt, !alt.isEmpty { l.append("    \(keyValue("alt", quoted: alt))") }
             return l
+        case .preface(let b):
+            return ["  - type: preface", "    \(keyValue("text", quoted: b.text))"]
         case .caseStudy(let b):
             var l = ["  - type: caseStudy"]
             if let v = b.challenge, !v.isEmpty { l.append("    \(keyValue("challenge", quoted: v))") }

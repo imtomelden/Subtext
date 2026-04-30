@@ -6,7 +6,6 @@ struct SiteSettingsView: View {
     @Environment(\.openWindow) private var openWindow
     @AppStorage("SubtextContentDensityCompact") private var useCompactDensity = false
     @AppStorage("SubtextAppearanceMode") private var appearanceModeRaw = AppAppearanceMode.system.rawValue
-    @AppStorage("SubtextProjectLiveMarkdownPreviewEnabled") private var liveMarkdownEnabled = true
     @State private var activeModal: ActiveModal?
     @State private var repoRootPath: String = RepoConstants.repoRoot.path(percentEncoded: false)
     @State private var repoSelectionError: String?
@@ -39,17 +38,6 @@ struct SiteSettingsView: View {
                         .toggleStyle(.switch)
                         .tint(Color.subtextAccent)
 
-                        Toggle(isOn: $liveMarkdownEnabled) {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("Live markdown preview in Projects")
-                                    .font(.body.weight(.medium))
-                                Text("Shows rendered markdown while editing project body content.")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                        .toggleStyle(.switch)
-                        .tint(Color.subtextAccent)
                     } header: {
                         Text("Appearance")
                             .font(.caption)

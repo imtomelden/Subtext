@@ -29,7 +29,7 @@ struct DraggableCard<Content: View, Leading: View, Trailing: View>: View {
     }
 
     var body: some View {
-        GlassSurface(prominence: .interactive, cornerRadius: 14) {
+        Surface(.surface, cornerRadius: 14) {
             HStack(spacing: 12) {
                 if let reorderControls {
                     reorderControls
@@ -43,8 +43,8 @@ struct DraggableCard<Content: View, Leading: View, Trailing: View>: View {
                 trailing()
             }
             .padding(.horizontal, 14)
-            .padding(.vertical, 12)
-            .frame(minHeight: 64)
+            .padding(.vertical, 10)
+            .frame(minHeight: 56)
         }
     }
 }

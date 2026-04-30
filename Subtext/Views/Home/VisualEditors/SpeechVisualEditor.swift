@@ -2,9 +2,47 @@ import SwiftUI
 
 struct SpeechVisualEditor: View {
     @Binding var visual: VisualContent
+    private static let secondsFormatter: NumberFormatter = {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .none
+        formatter.minimum = 1
+        formatter.maximum = 600
+        return formatter
+    }()
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
+            GroupBox("Random status timing range (seconds)") {
+                HStack(spacing: 12) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Lower")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        TextField(
+                            "10",
+                            value: lowerRangeBinding,
+                            formatter: Self.secondsFormatter
+                        )
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 88)
+                    }
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Upper")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        TextField(
+                            "20",
+                            value: upperRangeBinding,
+                            formatter: Self.secondsFormatter
+                        )
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 88)
+                    }
+                }
+                .padding(.top, 2)
+            }
+
             ForEach(messages.indices, id: \.self) { idx in
                 row(for: idx)
             }
@@ -25,8 +63,47 @@ struct SpeechVisualEditor: View {
         return []
     }
 
+    private var speech: SpeechVisual {
+        if case .speech(let s) = visual { return s }
+        return SpeechVisual(messages: [])
+    }
+
     private func write(_ messages: [SpeechMessage]) {
-        visual = .speech(SpeechVisual(messages: messages))
+        visual = .speech(SpeechVisual(
+            messages: messages,
+            randomDelayMinSeconds: speech.randomDelayMinSeconds,
+            randomDelayMaxSeconds: speech.randomDelayMaxSeconds
+        ))
+    }
+
+    private func writeRange(min: Int, max: Int) {
+        visual = .speech(SpeechVisual(
+            messages: messages,
+            randomDelayMinSeconds: min,
+            randomDelayMaxSeconds: max
+        ))
+    }
+
+    private var lowerRangeBinding: Binding<Int> {
+        Binding(
+            get: { max(1, speech.randomDelayMinSeconds ?? 10) },
+            set: { newValue in
+                let minValue = max(1, newValue)
+                let currentMax = max(1, speech.randomDelayMaxSeconds ?? 20)
+                writeRange(min: minValue, max: max(minValue, currentMax))
+            }
+        )
+    }
+
+    private var upperRangeBinding: Binding<Int> {
+        Binding(
+            get: { max(1, speech.randomDelayMaxSeconds ?? 20) },
+            set: { newValue in
+                let maxValue = max(1, newValue)
+                let currentMin = max(1, speech.randomDelayMinSeconds ?? 10)
+                writeRange(min: min(currentMin, maxValue), max: maxValue)
+            }
+        )
     }
 
     @ViewBuilder

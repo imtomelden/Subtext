@@ -13,6 +13,7 @@ enum ProjectBlock: Equatable, Sendable, Identifiable {
     case body(BodyBlock)
     case pageHero(PageHeroBlock)
     case headerImage(HeaderImageBlock)
+    case preface(PrefaceBlock)
     case caseStudy(CaseStudyBlock)
     case videoDetails(VideoDetailsBlock)
     case externalLink(ExternalLinkBlock)
@@ -31,6 +32,7 @@ enum ProjectBlock: Equatable, Sendable, Identifiable {
         case .body(let b): b.id
         case .pageHero(let b): b.id
         case .headerImage(let b): b.id
+        case .preface(let b): b.id
         case .caseStudy(let b): b.id
         case .videoDetails(let b): b.id
         case .externalLink(let b): b.id
@@ -42,7 +44,7 @@ enum ProjectBlock: Equatable, Sendable, Identifiable {
     /// True for blocks that participate in the “layout” ring (drives default synthesis when absent).
     var isLayoutBlock: Bool {
         switch self {
-        case .body, .pageHero, .headerImage, .caseStudy, .videoDetails, .externalLink, .tagList, .relatedProjects:
+        case .body, .pageHero, .headerImage, .preface, .caseStudy, .videoDetails, .externalLink, .tagList, .relatedProjects:
             return true
         default:
             return false
@@ -60,6 +62,7 @@ enum ProjectBlock: Equatable, Sendable, Identifiable {
         case body
         case pageHero
         case headerImage
+        case preface
         case caseStudy
         case videoDetails
         case externalLink
@@ -80,6 +83,7 @@ enum ProjectBlock: Equatable, Sendable, Identifiable {
             case .body: "MDX body"
             case .pageHero: "Page hero"
             case .headerImage: "Header image"
+            case .preface: "Preface"
             case .caseStudy: "Case study"
             case .videoDetails: "Video details"
             case .externalLink: "External link"
@@ -100,6 +104,7 @@ enum ProjectBlock: Equatable, Sendable, Identifiable {
             case .body: "doc.plaintext"
             case .pageHero: "sparkles"
             case .headerImage: "photo"
+            case .preface: "text.alignleft"
             case .caseStudy: "list.bullet.rectangle"
             case .videoDetails: "film"
             case .externalLink: "link"
@@ -121,6 +126,7 @@ enum ProjectBlock: Equatable, Sendable, Identifiable {
             case .body: (0.40, 0.82, 0.68)
             case .pageHero: (0.55, 0.75, 0.98)
             case .headerImage: (0.90, 0.60, 0.45)
+            case .preface: (0.72, 0.68, 0.55)
             case .caseStudy: (0.50, 0.85, 0.90)
             case .videoDetails: (0.75, 0.55, 0.95)
             case .externalLink: (0.45, 0.78, 0.55)
@@ -142,6 +148,7 @@ enum ProjectBlock: Equatable, Sendable, Identifiable {
         case .body: .body
         case .pageHero: .pageHero
         case .headerImage: .headerImage
+        case .preface: .preface
         case .caseStudy: .caseStudy
         case .videoDetails: .videoDetails
         case .externalLink: .externalLink
@@ -180,6 +187,9 @@ enum ProjectBlock: Equatable, Sendable, Identifiable {
             return [h.eyebrow, h.title, h.subtitle].compactMap { $0 }.first.map { $0 } ?? "Hero"
         case .headerImage(let i):
             return i.src.isEmpty ? "No image" : i.src
+        case .preface(let p):
+            let t = p.text.trimmingCharacters(in: .whitespacesAndNewlines)
+            return t.isEmpty ? "Preface" : String(t.prefix(80))
         case .caseStudy(let c):
             return [c.challenge, c.role].compactMap { $0 }.first.map { $0 } ?? "Case study"
         case .videoDetails(let v):
@@ -258,6 +268,7 @@ enum ProjectBlock: Equatable, Sendable, Identifiable {
         case .body: .body(BodyBlock())
         case .pageHero: .pageHero(PageHeroBlock(eyebrow: nil, title: nil, subtitle: nil))
         case .headerImage: .headerImage(HeaderImageBlock(src: "", alt: nil))
+        case .preface: .preface(PrefaceBlock(text: ""))
         case .caseStudy: .caseStudy(CaseStudyBlock(
             challenge: nil, approach: nil, outcome: nil, role: nil, duration: nil
         ))
@@ -294,6 +305,11 @@ struct HeaderImageBlock: Equatable, Sendable {
     var id: UUID = UUID()
     var src: String
     var alt: String?
+}
+
+struct PrefaceBlock: Equatable, Sendable {
+    var id: UUID = UUID()
+    var text: String
 }
 
 struct CaseStudyBlock: Equatable, Sendable {
@@ -492,6 +508,7 @@ extension ProjectBlock {
         case (.body(let l), .body(let r)): l == r
         case (.pageHero(let l), .pageHero(let r)): l == r
         case (.headerImage(let l), .headerImage(let r)): l == r
+        case (.preface(let l), .preface(let r)): l.text == r.text
         case (.caseStudy(let l), .caseStudy(let r)): l == r
         case (.videoDetails(let l), .videoDetails(let r)): l == r
         case (.externalLink(let l), .externalLink(let r)): l == r
@@ -517,6 +534,12 @@ extension PageHeroBlock {
 extension HeaderImageBlock {
     static func == (lhs: HeaderImageBlock, rhs: HeaderImageBlock) -> Bool {
         lhs.src == rhs.src && lhs.alt == rhs.alt
+    }
+}
+
+extension PrefaceBlock {
+    static func == (lhs: PrefaceBlock, rhs: PrefaceBlock) -> Bool {
+        lhs.text == rhs.text
     }
 }
 

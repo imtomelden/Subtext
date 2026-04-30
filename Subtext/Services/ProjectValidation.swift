@@ -93,6 +93,13 @@ enum ProjectValidator {
                         message: "Quote block text is required."
                     ))
                 }
+            case .preface(let preface):
+                if preface.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    issues.append(.init(
+                        field: "blocks[\(index)].text",
+                        message: "Preface text is required."
+                    ))
+                }
             default:
                 break
             }

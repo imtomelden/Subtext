@@ -56,7 +56,7 @@ struct ReorderableVStack<Item: Identifiable, Row: View>: View where Item.ID: Has
                     }
             }
         }
-        .animation(.snappy(duration: 0.22), value: items.map(\.id))
+        .animation(UXMotion.short, value: items.map(\.id))
     }
 
     private func reorderControls(at index: Int) -> AnyView {
@@ -105,7 +105,7 @@ struct ReorderableVStack<Item: Identifiable, Row: View>: View where Item.ID: Has
         let movedID = AnyHashable(items[index].id)
         let toOffset = delta > 0 ? target + 1 : target
 
-        withAnimation(.snappy(duration: 0.22)) {
+        withAnimation(UXMotion.short) {
             onMove(IndexSet(integer: index), toOffset)
         }
 

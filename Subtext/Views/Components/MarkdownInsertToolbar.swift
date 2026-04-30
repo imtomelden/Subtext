@@ -20,14 +20,12 @@ struct MarkdownInsertToolbar: View {
             insertButton(
                 system: "bold",
                 help: insertHelp("bold text"),
-                snippet: "**bold**",
-                placeholder: NSRange(location: 2, length: 4)
+                inlineStyle: .bold
             )
             insertButton(
                 system: "italic",
                 help: insertHelp("italic text"),
-                snippet: "*italic*",
-                placeholder: NSRange(location: 1, length: 6)
+                inlineStyle: .italic
             )
             insertButton(
                 system: "list.bullet",
@@ -42,8 +40,12 @@ struct MarkdownInsertToolbar: View {
             insertButton(
                 system: "link",
                 help: insertHelp("link"),
-                snippet: "[link text](https://)",
-                placeholder: NSRange(location: 1, length: 9)
+                inlineStyle: .link
+            )
+            insertButton(
+                system: "tag",
+                help: insertHelp("info chip"),
+                inlineStyle: .infoChip
             )
             Button(action: insertImageFromLibrary) {
                 Image(systemName: "photo")
@@ -130,11 +132,16 @@ struct MarkdownInsertToolbar: View {
     private func insertButton(
         system: String,
         help: String,
-        snippet: String,
+        snippet: String = "",
+        inlineStyle: MarkdownInlineFormatter.Style? = nil,
         placeholder: NSRange? = nil
     ) -> some View {
         Button {
-            insert(snippet: snippet, placeholder: placeholder)
+            if let inlineStyle {
+                insertInline(style: inlineStyle)
+            } else {
+                insert(snippet: snippet, placeholder: placeholder)
+            }
         } label: {
             Image(systemName: system)
         }
@@ -171,6 +178,26 @@ struct MarkdownInsertToolbar: View {
             let caret = range.location + (composed as NSString).length
             selection.wrappedValue = NSRange(location: caret, length: 0)
         }
+    }
+
+    private func insertInline(style: MarkdownInlineFormatter.Style) {
+        guard let selection = selection else {
+            let result = MarkdownInlineFormatter.apply(
+                style: style,
+                to: text,
+                selection: NSRange(location: (text as NSString).length, length: 0)
+            )
+            text = result.text
+            return
+        }
+
+        let result = MarkdownInlineFormatter.apply(
+            style: style,
+            to: text,
+            selection: selection.wrappedValue
+        )
+        text = result.text
+        selection.wrappedValue = result.selection
     }
 
     /// Block-level snippets (lists, tables, etc.) want a blank line above them

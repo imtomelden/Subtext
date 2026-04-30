@@ -218,11 +218,14 @@ actor FileService {
     ) throws {
         do {
             let reparsed = try MDXParser.parse(text, fileName: url.lastPathComponent)
+            let lhs = canonicalFrontmatter(reparsed.frontmatter)
+            let rhs = canonicalFrontmatter(original.frontmatter)
             // Compare frontmatter exactly — every field must round-trip —
             // and bodies after trimming trailing whitespace, because the
             // serialiser always normalises to a single trailing newline.
-            guard reparsed.frontmatter == original.frontmatter else {
-                throw FileError.schemaMismatch(url, "frontmatter round-trip differs — a field was dropped or renamed.")
+            guard lhs == rhs else {
+                let detail = firstFrontmatterDifference(lhs: lhs, rhs: rhs) ?? "a field was dropped or renamed"
+                throw FileError.schemaMismatch(url, "frontmatter round-trip differs — \(detail).")
             }
             let trimmedA = reparsed.body.trimmingCharacters(in: .whitespacesAndNewlines)
             let trimmedB = original.body.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -283,5 +286,153 @@ actor FileService {
 
     private func fileModificationDate(at url: URL) -> Date {
         (try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
+    }
+
+    private func canonicalFrontmatter(_ front: ProjectFrontmatter) -> ProjectFrontmatter {
+        var out = front
+        out.thumbnail = normaliseOptionalString(out.thumbnail)
+        out.headerImage = normaliseOptionalString(out.headerImage)
+        out.externalUrl = normaliseOptionalString(out.externalUrl)
+        out.role = normaliseOptionalString(out.role)
+        out.duration = normaliseOptionalString(out.duration)
+        out.impact = normaliseOptionalString(out.impact)
+        out.challenge = normaliseOptionalString(out.challenge)
+        out.approach = normaliseOptionalString(out.approach)
+        out.outcome = normaliseOptionalString(out.outcome)
+
+        if var hero = out.hero {
+            hero.eyebrow = normaliseOptionalString(hero.eyebrow)
+            hero.title = normaliseOptionalString(hero.title)
+            hero.subtitle = normaliseOptionalString(hero.subtitle)
+            out.hero = hero.isEmpty ? nil : hero
+        }
+
+        if var videoMeta = out.videoMeta {
+            videoMeta.runtime = normaliseOptionalString(videoMeta.runtime)
+            videoMeta.platform = normaliseOptionalString(videoMeta.platform)
+            videoMeta.transcriptUrl = normaliseOptionalString(videoMeta.transcriptUrl)
+            out.videoMeta = videoMeta.isEmpty ? nil : videoMeta
+        }
+
+        out.blocks = out.blocks.map { canonicalBlock($0) }
+        syncDerivedTopLevelFieldsFromLayoutBlocks(&out)
+        return out
+    }
+
+    private func canonicalBlock(_ block: ProjectBlock) -> ProjectBlock {
+        switch block {
+        case .pageHero(var b):
+            b.eyebrow = normaliseOptionalString(b.eyebrow)
+            b.title = normaliseOptionalString(b.title)
+            b.subtitle = normaliseOptionalString(b.subtitle)
+            return .pageHero(b)
+        case .headerImage(var b):
+            b.alt = normaliseOptionalString(b.alt)
+            return .headerImage(b)
+        case .caseStudy(var b):
+            b.challenge = normaliseOptionalString(b.challenge)
+            b.approach = normaliseOptionalString(b.approach)
+            b.outcome = normaliseOptionalString(b.outcome)
+            b.role = normaliseOptionalString(b.role)
+            b.duration = normaliseOptionalString(b.duration)
+            return .caseStudy(b)
+        case .videoDetails(var b):
+            b.runtime = normaliseOptionalString(b.runtime)
+            b.platform = normaliseOptionalString(b.platform)
+            b.transcriptUrl = normaliseOptionalString(b.transcriptUrl)
+            return .videoDetails(b)
+        case .externalLink(var b):
+            b.label = normaliseOptionalString(b.label)
+            return .externalLink(b)
+        case .quote(var b):
+            b.attributionName = normaliseOptionalString(b.attributionName)
+            b.attributionRoleContext = normaliseOptionalString(b.attributionRoleContext)
+            b.theme = normaliseOptionalString(b.theme)
+            return .quote(b)
+        case .mediaGallery(var b):
+            b.items = b.items.map { item in
+                var out = item
+                out.caption = normaliseOptionalString(out.caption)
+                out.credit = normaliseOptionalString(out.credit)
+                out.date = normaliseOptionalString(out.date)
+                out.location = normaliseOptionalString(out.location)
+                return out
+            }
+            return .mediaGallery(b)
+        case .videoShowcase(var b):
+            b.description = normaliseOptionalString(b.description)
+            b.ctaText = normaliseOptionalString(b.ctaText)
+            b.ctaHref = normaliseOptionalString(b.ctaHref)
+            return .videoShowcase(b)
+        case .cta(var b):
+            b.description = normaliseOptionalString(b.description)
+            return .cta(b)
+        default:
+            return block
+        }
+    }
+
+    private func normaliseOptionalString(_ value: String?) -> String? {
+        guard let value else { return nil }
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : value
+    }
+
+    /// Keep round-trip validation aligned with parser semantics: when a layout
+    /// block exists, it is canonical and top-level mirrors should follow it.
+    private func syncDerivedTopLevelFieldsFromLayoutBlocks(_ front: inout ProjectFrontmatter) {
+        for block in front.blocks {
+            switch block {
+            case .caseStudy(let b):
+                front.challenge = normaliseOptionalString(b.challenge)
+                front.approach = normaliseOptionalString(b.approach)
+                front.outcome = normaliseOptionalString(b.outcome)
+                front.role = normaliseOptionalString(b.role)
+                front.duration = normaliseOptionalString(b.duration)
+            case .videoDetails(let b):
+                let meta = ProjectFrontmatter.VideoMeta(
+                    runtime: normaliseOptionalString(b.runtime),
+                    platform: normaliseOptionalString(b.platform),
+                    transcriptUrl: normaliseOptionalString(b.transcriptUrl),
+                    credits: b.credits
+                )
+                front.videoMeta = meta.isEmpty ? nil : meta
+            case .pageHero(let b):
+                let hero = ProjectFrontmatter.Hero(
+                    eyebrow: normaliseOptionalString(b.eyebrow),
+                    title: normaliseOptionalString(b.title),
+                    subtitle: normaliseOptionalString(b.subtitle)
+                )
+                front.hero = hero.isEmpty ? nil : hero
+            case .headerImage(let b):
+                front.headerImage = normaliseOptionalString(b.src)
+            default:
+                break
+            }
+        }
+    }
+
+    private func firstFrontmatterDifference(lhs: ProjectFrontmatter, rhs: ProjectFrontmatter) -> String? {
+        if lhs.title != rhs.title { return "title changed" }
+        if lhs.slug != rhs.slug { return "slug changed" }
+        if lhs.description != rhs.description { return "description changed" }
+        if lhs.date != rhs.date { return "date changed" }
+        if lhs.ownership != rhs.ownership { return "ownership changed" }
+        if lhs.tags != rhs.tags { return "tags changed" }
+        if lhs.thumbnail != rhs.thumbnail { return "thumbnail changed" }
+        if lhs.headerImage != rhs.headerImage { return "headerImage changed" }
+        if lhs.externalUrl != rhs.externalUrl { return "externalUrl changed" }
+        if lhs.featured != rhs.featured { return "featured changed" }
+        if lhs.draft != rhs.draft { return "draft changed" }
+        if lhs.role != rhs.role { return "role changed" }
+        if lhs.duration != rhs.duration { return "duration changed" }
+        if lhs.impact != rhs.impact { return "impact changed" }
+        if lhs.challenge != rhs.challenge { return "challenge changed" }
+        if lhs.approach != rhs.approach { return "approach changed" }
+        if lhs.outcome != rhs.outcome { return "outcome changed" }
+        if lhs.videoMeta != rhs.videoMeta { return "videoMeta changed" }
+        if lhs.hero != rhs.hero { return "hero changed" }
+        if lhs.blocks != rhs.blocks { return "blocks changed" }
+        return nil
     }
 }

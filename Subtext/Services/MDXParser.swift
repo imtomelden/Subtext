@@ -419,6 +419,9 @@ enum MDXParser {
                 alt: map["alt"]?.stringValue
             ))
 
+        case "preface":
+            return .preface(PrefaceBlock(text: map["text"]?.stringValue ?? ""))
+
         case "caseStudy":
             return .caseStudy(CaseStudyBlock(
                 challenge: map["challenge"]?.stringValue,

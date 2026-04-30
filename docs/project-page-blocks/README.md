@@ -1,6 +1,6 @@
 # Project page blocks
 
-The project page is one ordered `blocks:` list. **Layout blocks** place page chrome (hero, header image, MDX body, case study, video details, external link, tags, related projects). **Content blocks** are rich cards (project snapshot, key stats, goals, quotes, media, video showcase, CTA).
+The project page is one ordered `blocks:` list. **Layout blocks** place page chrome (hero, header image, preface, MDX body, case study, video details, external link, tags, related projects). **Content blocks** are rich cards (project snapshot, key stats, goals, quotes, media, video showcase, CTA).
 
 ## Content block types
 
@@ -18,6 +18,7 @@ The project page is one ordered `blocks:` list. **Layout blocks** place page chr
 - `body` — no fields; the MDX body renders at this position
 - `pageHero` — optional `eyebrow`, `title`, `subtitle` (replaces top-level `hero:`)
 - `headerImage` — `src`, optional `alt` (replaces top-level `headerImage:`)
+- `preface` — `text` (required): editorial context before the body (e.g. when the piece was written), rendered as **Markdown** on the site (GFM-style: paragraphs, emphasis, links, lists, code spans, etc.). Place this block above `body` in `blocks:` when used.
 - `caseStudy` — optional `challenge`, `approach`, `outcome`, `role`, `duration` (replaces the inline case-study fields)
 - `videoDetails` — `runtime`, `platform`, `transcriptUrl`, `credits` (replaces top-level `videoMeta:` for layout)
 - `externalLink` — `href`, optional `label` (default label on the site: “View project →”)
@@ -43,6 +44,7 @@ Legacy fields remain readable for migration: `hero`, `headerImage`, `challenge`,
 - `quote`: quote text required; attribution is optional.
 - `mediaGallery`: each item requires `src` and `alt`.
 - `headerImage` (block): `src` required.
+- `preface`: `text` required (non-empty after trim).
 - `externalLink` (block): `href` required.
 
 ## Pilot files

@@ -69,6 +69,8 @@ struct BlockEditorPanel: View {
             PageHeroBlockEditor(block: pageHeroBinding)
         case .headerImage:
             HeaderImageBlockEditor(block: headerImageBinding)
+        case .preface:
+            PrefaceBlockEditor(block: prefaceBinding)
         case .caseStudy:
             CaseStudyBlockEditor(block: caseStudyBinding)
         case .videoDetails:
@@ -190,6 +192,16 @@ struct BlockEditorPanel: View {
                 return HeaderImageBlock(src: "", alt: nil)
             },
             set: { block = .headerImage($0) }
+        )
+    }
+
+    private var prefaceBinding: Binding<PrefaceBlock> {
+        Binding(
+            get: {
+                if case .preface(let b) = block { return b }
+                return PrefaceBlock(text: "")
+            },
+            set: { block = .preface($0) }
         )
     }
 

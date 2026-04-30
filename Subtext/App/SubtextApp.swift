@@ -125,6 +125,10 @@ struct SubtextApp: App {
             }
             .keyboardShortcut("k", modifiers: [.command, .option])
 
+            Button("Info Chip in Project Body") {
+                NotificationCenter.default.post(name: .subtextProjectInsertInfoChip, object: nil)
+            }
+
             Button("Cycle Project Editor Mode") {
                 NotificationCenter.default.post(name: .subtextProjectTogglePreviewMode, object: nil)
             }
@@ -201,6 +205,7 @@ extension Notification.Name {
     static let subtextProjectInsertItalic = Notification.Name("SubtextProjectInsertItalic")
     static let subtextProjectInsertHeading = Notification.Name("SubtextProjectInsertHeading")
     static let subtextProjectInsertLink = Notification.Name("SubtextProjectInsertLink")
+    static let subtextProjectInsertInfoChip = Notification.Name("SubtextProjectInsertInfoChip")
     static let subtextProjectTogglePreviewMode = Notification.Name("SubtextProjectTogglePreviewMode")
     static let subtextAppWillTerminate = Notification.Name("SubtextAppWillTerminate")
 }

@@ -6,25 +6,35 @@ struct ProjectsListView: View {
     @State private var showNewProjectSheet = false
     @State private var deleteTarget: ProjectDocument?
     @State private var searchText = ""
+    @FocusState private var searchFocused: Bool
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: density.sectionOuterSpacing) {
-                header
+        VStack(spacing: 0) {
+            // Sticky header — stays fixed while list scrolls
+            listHeader
+            Divider()
 
-                searchField
-                    .padding(.horizontal, density.sectionOuterSpacing)
+            // Search field
+            searchField
+                .padding(.horizontal, 10)
+                .padding(.vertical, 8)
 
+            Divider()
+
+            // Scrollable project list
+            ScrollView {
                 if filteredProjects.isEmpty {
                     emptyState
-                        .padding(.horizontal, density.sectionOuterSpacing)
+                        .padding(.horizontal, 10)
+                        .padding(.top, 24)
                 } else {
                     LazyVStack(spacing: density.listRowSpacing) {
                         let seoIssuesByFileName = seoIssuesLookup(for: filteredProjects)
                         ForEach(filteredProjects) { project in
                             ProjectListCard(
                                 document: project,
-                                seoIssues: seoIssuesByFileName[project.fileName] ?? []
+                                seoIssues: seoIssuesByFileName[project.fileName] ?? [],
+                                isSelected: store.selectedProjectFileName == project.fileName
                             ) {
                                 store.selectedProjectFileName = project.fileName
                             } onDelete: {
@@ -32,11 +42,11 @@ struct ProjectsListView: View {
                             }
                         }
                     }
-                    .padding(.horizontal, density.sectionOuterSpacing)
-                    .padding(.bottom, 80)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 10)
+                    .padding(.bottom, 60)
                 }
             }
-            .padding(.top, density.canvasTopPadding)
         }
         .sheet(isPresented: $showNewProjectSheet) {
             NewProjectSheet()
@@ -46,7 +56,7 @@ struct ProjectsListView: View {
         }
         .alert(item: $deleteTarget) { target in
             Alert(
-                title: Text("Delete “\(target.frontmatter.title)”?"),
+                title: Text("Delete \u{201C}\(target.frontmatter.title)\u{201D}?"),
                 message: Text("A backup is saved first. The file will be removed from /src/content/projects."),
                 primaryButton: .destructive(Text("Delete")) {
                     Task { await store.deleteProject(target.fileName) }
@@ -54,7 +64,108 @@ struct ProjectsListView: View {
                 secondaryButton: .cancel()
             )
         }
+        // ⌘F focuses the search field
+        .onKeyPress(.init("f"), phases: .down) { event in
+            guard event.modifiers.contains(.command) else { return .ignored }
+            searchFocused = true
+            return .handled
+        }
     }
+
+    // MARK: - Header
+
+    private var listHeader: some View {
+        HStack(alignment: .center) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Projects")
+                    .font(.headline.weight(.semibold))
+                    .foregroundStyle(Tokens.Text.primary)
+                Text("\(store.projects.count) projects")
+                    .font(.caption2)
+                    .foregroundStyle(Tokens.Text.tertiary)
+            }
+            Spacer()
+
+            Button {
+                showNewProjectSheet = true
+            } label: {
+                Image(systemName: "plus")
+                    .font(.system(size: 13, weight: .medium))
+            }
+            .subtextButton(.icon)
+            .help("New project (⌘N)")
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+    }
+
+    // MARK: - Search Field
+
+    private var searchField: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(Tokens.Text.tertiary)
+
+            TextField("Search projects", text: $searchText)
+                .textFieldStyle(.plain)
+                .font(.callout)
+                .focused($searchFocused)
+
+            if !searchText.isEmpty {
+                Button {
+                    withAnimation(UXMotion.micro) { searchText = "" }
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 12))
+                        .foregroundStyle(Tokens.Text.tertiary)
+                }
+                .buttonStyle(.plain)
+                .transition(.opacity.combined(with: .scale(scale: 0.8)))
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 7)
+        .background(
+            RoundedRectangle(cornerRadius: SubtextUI.Radius.small, style: .continuous)
+                .fill(Tokens.Background.sunken)
+        )
+    }
+
+    // MARK: - Empty State
+
+    @ViewBuilder
+    private var emptyState: some View {
+        VStack(spacing: 12) {
+            ZStack {
+                RoundedRectangle(cornerRadius: SubtextUI.Radius.medium, style: .continuous)
+                    .fill(Tokens.Accent.subtleFill)
+                Image(systemName: searchText.isEmpty ? "doc.badge.plus" : "magnifyingglass")
+                    .font(.system(size: 22, weight: .medium))
+                    .foregroundStyle(Color.subtextAccent)
+            }
+            .frame(width: 52, height: 52)
+
+            Text(searchText.isEmpty ? "No projects yet" : "No results")
+                .font(.callout.weight(.medium))
+                .foregroundStyle(Tokens.Text.primary)
+
+            if searchText.isEmpty {
+                Text("Press ⌘N to create your first case study.")
+                    .font(.caption)
+                    .foregroundStyle(Tokens.Text.tertiary)
+                    .multilineTextAlignment(.center)
+            } else {
+                Text("Try a different title, slug, or tag.")
+                    .font(.caption)
+                    .foregroundStyle(Tokens.Text.tertiary)
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 32)
+    }
+
+    // MARK: - Helpers
 
     private var filteredProjects: [ProjectDocument] {
         let q = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
@@ -69,194 +180,133 @@ struct ProjectsListView: View {
     private func seoIssuesLookup(for projects: [ProjectDocument]) -> [String: [String]] {
         Dictionary(uniqueKeysWithValues: projects.map { ($0.fileName, SEOPreview.issues(for: $0)) })
     }
-
-    @ViewBuilder
-    private var header: some View {
-        HStack(alignment: .firstTextBaseline) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Projects")
-                    .font(.largeTitle.weight(.semibold))
-                Text("\(store.projects.count) case studies in /src/content/projects")
-                    .font(SubtextUI.Typography.body)
-                    .foregroundStyle(.secondary)
-            }
-            Spacer()
-
-            HStack(spacing: 10) {
-                RevealInFinderButton(
-                    url: RepoConstants.projectsDirectory,
-                    helpText: "Reveal projects folder in Finder"
-                )
-
-                Button {
-                    showNewProjectSheet = true
-                } label: {
-                    Label("New project", systemImage: "plus")
-                }
-                .buttonStyle(.borderedProminent)
-                .tint(Color.subtextAccent)
-            }
-        }
-        .padding(.horizontal, density.sectionOuterSpacing)
-    }
-
-    @ViewBuilder
-    private var searchField: some View {
-        HStack(spacing: SubtextUI.Spacing.small + 2) {
-            Image(systemName: "magnifyingglass")
-                .foregroundStyle(.secondary)
-            TextField("Search projects", text: $searchText)
-                .textFieldStyle(.plain)
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 9)
-        .background(
-            GlassSurface(prominence: .regular, cornerRadius: SubtextUI.Radius.small) {
-                Color.clear
-            }
-        )
-    }
-
-    @ViewBuilder
-    private var emptyState: some View {
-        GlassSurface(prominence: .regular, cornerRadius: SubtextUI.Radius.xLarge) {
-            VStack(spacing: 10) {
-                Image(systemName: "folder.badge.questionmark")
-                    .font(.system(size: 32, weight: .medium))
-                    .foregroundStyle(.secondary)
-                Text(searchText.isEmpty ? "No projects yet" : "No projects match “\(searchText)”")
-                    .font(.callout.weight(.medium))
-                if searchText.isEmpty {
-                    Text("Create your first case study with the “New project” button.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                } else {
-                    Text("Try a different title, slug, or tag.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 56)
-        }
-    }
 }
+
+// MARK: - Project List Card
 
 private struct ProjectListCard: View {
     let document: ProjectDocument
     let seoIssues: [String]
+    var isSelected: Bool = false
     var onOpen: () -> Void
     var onDelete: () -> Void
     @Environment(CMSStore.self) private var store
+    @State private var isHovered = false
 
     var body: some View {
         let isDirty = store.isProjectDirty(document.fileName)
 
-        DraggableCard {
-            categoryPill
-        } content: {
-            HStack(alignment: .top, spacing: 10) {
-                if let thumbnail = document.frontmatter.thumbnail, !thumbnail.isEmpty {
-                    AssetMediaThumbnail(src: thumbnail, size: 44, cornerRadius: SubtextUI.Radius.tiny)
-                }
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack(spacing: 6) {
-                        Text(document.frontmatter.title)
-                            .font(.body.weight(.semibold))
-                            .lineLimit(1)
-                        if document.frontmatter.featured {
-                            Image(systemName: "star.fill")
-                                .font(.caption)
-                                .foregroundStyle(.yellow)
-                        }
-                        if document.frontmatter.draft {
-                            Text("DRAFT")
-                                .font(SubtextUI.Typography.microLabel)
-                                .foregroundStyle(Color.subtextWarning)
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 2)
-                                .background(Capsule().fill(SubtextUI.Surface.warningFill))
-                        }
-                        if isDirty {
-                            Circle()
-                                .fill(Color.subtextAccent)
-                                .frame(width: 6, height: 6)
-                        }
-                        seoBadge
+        HStack(alignment: .center, spacing: 10) {
+            // Ownership dot
+            Circle()
+                .fill(document.frontmatter.ownership.tint)
+                .frame(width: 8, height: 8)
+                .accessibilityLabel("\(document.frontmatter.ownership.displayName) project")
+
+            // Main content — two lines
+            VStack(alignment: .leading, spacing: 3) {
+                // Line 1: title + badges
+                HStack(spacing: 5) {
+                    Text(document.frontmatter.title)
+                        .font(.body.weight(.semibold))
+                        .foregroundStyle(Tokens.Text.primary)
+                        .lineLimit(1)
+
+                    if document.frontmatter.featured {
+                        Image(systemName: "star.fill")
+                            .font(.system(size: 10))
+                            .foregroundStyle(.yellow)
                     }
+
+                    if document.frontmatter.draft {
+                        Text("Draft")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(Color.subtextWarning)
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 1)
+                            .background(Capsule().fill(Color.subtextWarning.opacity(0.15)))
+                    }
+
+                    if isDirty {
+                        Circle()
+                            .fill(Color.subtextAccent)
+                            .frame(width: 6, height: 6)
+                    }
+
+                    if !seoIssues.isEmpty {
+                        Text("SEO \(seoIssues.count)")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(Color.subtextWarning)
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 1)
+                            .background(Capsule().fill(Color.subtextWarning.opacity(0.15)))
+                            .help(seoIssues.joined(separator: "\n"))
+                    }
+                }
+
+                // Line 2: description
+                if !document.frontmatter.description.isEmpty {
                     Text(document.frontmatter.description)
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Tokens.Text.secondary)
                         .lineLimit(1)
-                    if !document.frontmatter.tags.isEmpty {
-                        Text(document.frontmatter.tags.prefix(3).map { "#\($0)" }.joined(separator: " "))
-                            .font(.caption2)
-                            .foregroundStyle(.tertiary)
-                            .lineLimit(1)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            // Trailing: date + delete
+            VStack(alignment: .trailing, spacing: 4) {
+                Text(formattedDate)
+                    .font(.caption2.monospacedDigit())
+                    .foregroundStyle(Tokens.Text.tertiary)
+
+                if isHovered {
+                    Button(role: .destructive, action: onDelete) {
+                        Image(systemName: "trash")
+                            .font(.system(size: 11))
                     }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(Tokens.Text.tertiary)
+                    .help("Delete project")
+                    .accessibilityLabel("Delete \(document.frontmatter.title)")
+                    .transition(.opacity.combined(with: .scale(scale: 0.8)))
                 }
-            }
-        } trailing: {
-            HStack(spacing: 6) {
-                Text(document.frontmatter.date)
-                    .font(.caption.monospaced())
-                    .foregroundStyle(.tertiary)
-
-                Button {
-                    onOpen()
-                } label: {
-                    Image(systemName: "chevron.right")
-                }
-                .buttonStyle(.borderless)
-                .foregroundStyle(.secondary)
-                .help("Open project")
-                .accessibilityLabel("Open \(document.frontmatter.title)")
-
-                Button(role: .destructive) {
-                    onDelete()
-                } label: {
-                    Image(systemName: "trash")
-                }
-                .buttonStyle(.borderless)
-                .foregroundStyle(.secondary)
-                .help("Delete project")
-                .accessibilityLabel("Delete \(document.frontmatter.title)")
             }
         }
-        .contentShape(Rectangle())
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .frame(minHeight: 44)
+        .background(
+            RoundedRectangle(cornerRadius: SubtextUI.Radius.small, style: .continuous)
+                .fill(isSelected ? Tokens.Accent.subtleFill : Color.clear)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: SubtextUI.Radius.small, style: .continuous)
+                .strokeBorder(
+                    isSelected ? Color.subtextAccent.opacity(0.25) : Color.clear,
+                    lineWidth: 0.5
+                )
+        )
+        .contentShape(RoundedRectangle(cornerRadius: SubtextUI.Radius.small, style: .continuous))
         .onTapGesture(perform: onOpen)
+        .onHover { isHovered = $0 }
+        .animation(UXMotion.micro, value: isHovered)
+        .animation(UXMotion.micro, value: isSelected)
     }
 
-    /// Cheap inline SEO lint — title length, description presence, thumbnail,
-    /// date validity, slug/file match. Shown as an amber pill linking to the
-    /// site audit sheet for details.
-    @ViewBuilder
-    private var seoBadge: some View {
-        if !seoIssues.isEmpty {
-            Text("SEO \(seoIssues.count)")
-                .font(SubtextUI.Typography.microLabel)
-                .foregroundStyle(Color.subtextWarning)
-                .padding(.horizontal, 6)
-                .padding(.vertical, 2)
-                .background(Capsule().fill(SubtextUI.Surface.warningFill))
-                .help(seoIssues.joined(separator: "\n"))
-        } else {
-            EmptyView()
+    private var formattedDate: String {
+        let parser = DateFormatter()
+        parser.dateFormat = "yyyy-MM-dd"
+        guard let date = parser.date(from: document.frontmatter.date) else {
+            return document.frontmatter.date
         }
-    }
-
-    private var categoryPill: some View {
-        let tint = document.frontmatter.ownership.tint
-        return Text(document.frontmatter.ownership.displayName.uppercased())
-            .font(SubtextUI.Typography.microLabel)
-            .tracking(0.5)
-            .foregroundStyle(tint)
-            .padding(.horizontal, SubtextUI.Spacing.small)
-            .padding(.vertical, SubtextUI.Spacing.xSmall)
-            .background(Capsule().fill(tint.opacity(0.18)))
-            .accessibilityLabel("\(document.frontmatter.ownership.displayName) ownership")
+        let display = DateFormatter()
+        display.dateFormat = "MMM d"
+        return display.string(from: date)
     }
 }
+
+// MARK: - New Project Sheet
 
 private struct NewProjectSheet: View {
     @Environment(CMSStore.self) private var store
@@ -304,8 +354,7 @@ private struct NewProjectSheet: View {
                         dismiss()
                     }
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(Color.subtextAccent)
+                .subtextButton(.primary)
                 .keyboardShortcut(.defaultAction)
                 .disabled(slug.isEmpty || title.isEmpty)
             }

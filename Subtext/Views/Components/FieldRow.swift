@@ -1,25 +1,46 @@
 import SwiftUI
 
-/// Labelled text field row used throughout editors. Consistent label width
-/// keeps editors visually aligned.
+/// Label layout options for `FieldRow`.
+enum FieldRowLabelStyle {
+    /// Label stacked above the field — default, good for tall inputs.
+    case above
+    /// Label at a fixed 72pt width to the left of the field — Linear-style inspector layout.
+    case inline
+}
+
+/// Labelled field row used throughout editors.
 struct FieldRow<Field: View>: View {
     let label: String
+    var labelStyle: FieldRowLabelStyle = .above
     @ViewBuilder let field: () -> Field
 
-    init(_ label: String, @ViewBuilder field: @escaping () -> Field) {
+    init(_ label: String, labelStyle: FieldRowLabelStyle = .above, @ViewBuilder field: @escaping () -> Field) {
         self.label = label
+        self.labelStyle = labelStyle
         self.field = field
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(label)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .textCase(.uppercase)
-                .tracking(0.5)
-            field()
+        switch labelStyle {
+        case .above:
+            VStack(alignment: .leading, spacing: 6) {
+                labelView
+                field()
+            }
+        case .inline:
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
+                labelView
+                    .frame(width: 72, alignment: .leading)
+                field()
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
         }
+    }
+
+    private var labelView: some View {
+        Text(label)
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(.secondary)
     }
 }
 

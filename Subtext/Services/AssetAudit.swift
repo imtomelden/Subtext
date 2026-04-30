@@ -182,7 +182,7 @@ actor AssetAudit {
                     addIfAsset(caption.src, into: &set)
                 }
             }
-        case .body, .pageHero, .caseStudy, .videoDetails, .externalLink, .tagList, .relatedProjects,
+        case .body, .pageHero, .preface, .caseStudy, .videoDetails, .externalLink, .tagList, .relatedProjects,
                 .quote, .cta, .projectSnapshot, .keyStats, .goalsMetrics:
             break
         }
@@ -344,7 +344,7 @@ actor AssetAudit {
                     if let t = vd.transcriptUrl, !t.isEmpty {
                         issues.append(contentsOf: validate(href: t, source: "\(prefix) — transcript URL", fileName: project.fileName, knownProjectSlugs: knownProjectSlugs))
                     }
-                case .body, .pageHero, .headerImage, .caseStudy, .tagList, .relatedProjects, .quote, .keyStats, .goalsMetrics, .mediaGallery, .projectSnapshot:
+                case .body, .pageHero, .headerImage, .preface, .caseStudy, .tagList, .relatedProjects, .quote, .keyStats, .goalsMetrics, .mediaGallery, .projectSnapshot:
                     break
                 }
             }

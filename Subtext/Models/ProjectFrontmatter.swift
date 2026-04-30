@@ -67,6 +67,9 @@ struct ProjectFrontmatter: Equatable, Sendable {
     var blocks: [ProjectBlock]
 
     static func newDraft(slug: String, title: String, ownership: Ownership = .work) -> ProjectFrontmatter {
+        // Default layout ring must match `MDXParser.synthesiseLayoutBlocksIfNeeded` for the
+        // same top-level fields; otherwise the first save fails round-trip validation because
+        // parse re-injects these blocks when `blocks:` is absent from the file.
         ProjectFrontmatter(
             title: title,
             slug: slug,
@@ -87,7 +90,11 @@ struct ProjectFrontmatter: Equatable, Sendable {
             outcome: nil,
             videoMeta: nil,
             hero: nil,
-            blocks: []
+            blocks: [
+                .body(BodyBlock()),
+                .tagList(TagListBlock()),
+                .relatedProjects(RelatedProjectsBlock()),
+            ]
         )
     }
 }

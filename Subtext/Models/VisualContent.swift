@@ -98,6 +98,8 @@ struct TicketVisual: Equatable, Codable, Sendable {
 
 struct SpeechVisual: Equatable, Codable, Sendable {
     var messages: [SpeechMessage]
+    var randomDelayMinSeconds: Int? = nil
+    var randomDelayMaxSeconds: Int? = nil
 }
 
 struct SpeechMessage: Equatable, Codable, Identifiable, Sendable {
@@ -278,8 +280,22 @@ private struct TicketVisualWire: Codable {
 private struct SpeechVisualWire: Codable {
     var type: String = "speech"
     var messages: [SpeechMessage]
-    init(model: SpeechVisual) { self.messages = model.messages }
-    func toModel() -> SpeechVisual { SpeechVisual(messages: messages) }
+    var randomDelayMinSeconds: Int?
+    var randomDelayMaxSeconds: Int?
+
+    init(model: SpeechVisual) {
+        self.messages = model.messages
+        self.randomDelayMinSeconds = model.randomDelayMinSeconds
+        self.randomDelayMaxSeconds = model.randomDelayMaxSeconds
+    }
+
+    func toModel() -> SpeechVisual {
+        SpeechVisual(
+            messages: messages,
+            randomDelayMinSeconds: randomDelayMinSeconds,
+            randomDelayMaxSeconds: randomDelayMaxSeconds
+        )
+    }
 }
 
 private struct ScrambleVisualWire: Codable {

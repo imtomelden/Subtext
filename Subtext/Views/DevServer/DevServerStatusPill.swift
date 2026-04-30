@@ -15,7 +15,6 @@ enum DevServerPhaseVisuals {
     }
 
     static func treatment(phase: DevServerPhase, defaultPort: Int) -> Treatment {
-        let port = phase.displayPort ?? defaultPort
         switch phase {
         case .stopped:
             return Treatment(

@@ -8,7 +8,6 @@ struct ContentView: View {
     @Environment(\.openWindow) private var openWindow
     @AppStorage("SubtextContentDensityCompact") private var useCompactDensity = false
     @AppStorage("SubtextAppearanceMode") private var appearanceModeRaw = AppAppearanceMode.system.rawValue
-    @AppStorage("SubtextDismissedQuickTips") private var dismissedQuickTips = false
     @State private var tab: SidebarTab = .home
     @State private var didApplyInitialTab = false
     @State private var activeModal: ActiveModal?
@@ -88,9 +87,7 @@ struct ContentView: View {
             store.recordUXMetric("palette.open.requested", started: started, metadata: mode.rawValue)
         }
         .onReceive(NotificationCenter.default.publisher(for: .subtextToggleFocusMode)) { _ in
-            withAnimation(UXMotion.easeInOut(duration: UXMotion.navigationDuration)) {
-                columnVisibility = columnVisibility == .detailOnly ? .automatic : .detailOnly
-            }
+            columnVisibility = columnVisibility == .detailOnly ? .automatic : .detailOnly
         }
         .onReceive(NotificationCenter.default.publisher(for: .subtextOpenKeyboardShortcuts)) { _ in
             requestModal(.keyboardShortcuts)
@@ -233,11 +230,6 @@ struct ContentView: View {
         .overlay(alignment: .top) {
             VStack(spacing: 8) {
                 ToastOverlay(toast: $store.toast)
-                if !dismissedQuickTips {
-                    QuickTipsBanner {
-                        dismissedQuickTips = true
-                    }
-                }
                 if let recovery = store.pendingRecovery {
                     DraftRecoveryBanner(
                         recovery: recovery,

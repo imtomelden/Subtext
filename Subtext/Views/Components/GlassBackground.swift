@@ -60,6 +60,9 @@ struct GlassSurface<Content: View>: View {
         case regular
         case interactive
         case thick
+        /// Flat, non-glass surface. Uses `textBackgroundColor` so content
+        /// panels sit cleanly on the window background without layered blur.
+        case flat
 
         #if canImport(AppKit)
         fileprivate var material: NSVisualEffectView.Material {
@@ -67,6 +70,7 @@ struct GlassSurface<Content: View>: View {
             case .regular: .hudWindow
             case .interactive: .sidebar
             case .thick: .windowBackground
+            case .flat: .windowBackground
             }
         }
         #endif
@@ -87,29 +91,35 @@ struct GlassSurface<Content: View>: View {
     }
 
     var body: some View {
-        content()
-            .background(background)
-            .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .stroke(borderColor, lineWidth: SubtextUI.Glass.borderWidth)
-            )
-            .overlay(alignment: .top) {
-                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .stroke(Color.white.opacity(0.1), lineWidth: 0.5)
-                    .mask {
-                        LinearGradient(
-                            colors: [.white, .clear],
-                            startPoint: .top,
-                            endPoint: .bottom
-                        )
-                    }
-            }
-            .shadow(
-                color: .black.opacity(prominence == .thick ? SubtextUI.Glass.thickShadowOpacity : SubtextUI.Glass.regularShadowOpacity),
-                radius: SubtextUI.Glass.shadowRadius,
-                y: SubtextUI.Glass.shadowYOffset
-            )
+        if prominence == .flat {
+            content()
+                .background(Color(NSColor.textBackgroundColor))
+                .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+        } else {
+            content()
+                .background(background)
+                .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                        .stroke(borderColor, lineWidth: SubtextUI.Glass.borderWidth)
+                )
+                .overlay(alignment: .top) {
+                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                        .stroke(Color.white.opacity(0.1), lineWidth: 0.5)
+                        .mask {
+                            LinearGradient(
+                                colors: [.white, .clear],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                        }
+                }
+                .shadow(
+                    color: .black.opacity(prominence == .thick ? SubtextUI.Glass.thickShadowOpacity : SubtextUI.Glass.regularShadowOpacity),
+                    radius: SubtextUI.Glass.shadowRadius,
+                    y: SubtextUI.Glass.shadowYOffset
+                )
+        }
     }
 
     @ViewBuilder
@@ -140,6 +150,9 @@ struct GlassSurface<Content: View>: View {
             shape
                 .fill(Color.clear)
                 .glassEffect(.regular, in: shape)
+        case .flat:
+            // Flat never uses glass — handled in `body` directly.
+            shape.fill(Color(NSColor.textBackgroundColor))
         }
     }
 
@@ -152,6 +165,7 @@ struct GlassSurface<Content: View>: View {
         case .regular: Color.white.opacity(SubtextUI.Glass.regularBorderOpacity)
         case .interactive: Color.white.opacity(SubtextUI.Glass.interactiveBorderOpacity)
         case .thick: Color.white.opacity(SubtextUI.Glass.thickBorderOpacity)
+        case .flat: .clear
         }
     }
 }

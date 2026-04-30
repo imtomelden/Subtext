@@ -42,6 +42,6 @@ struct UnsavedChangesBar: View {
                 .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
-        .animation(.spring(response: 0.32, dampingFraction: 0.82), value: isVisible)
+        .animation(UXMotion.short, value: isVisible)
     }
 }

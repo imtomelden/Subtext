@@ -45,6 +45,6 @@ struct UndoBar: View {
                 .id(entry.id)
             }
         }
-        .animation(.spring(response: 0.32, dampingFraction: 0.82), value: entry?.id)
+        .animation(UXMotion.short, value: entry?.id)
     }
 }

@@ -1,54 +1,46 @@
 import SwiftUI
 
-/// Top-level Projects container. Switches between the list and the full
-/// editor depending on `CMSStore.selectedProjectFileName`.
+/// Top-level Projects container. Shows a persistent two-pane layout:
+/// project list on the left, editor on the right.
 struct ProjectsRootView: View {
     @Environment(CMSStore.self) private var store
     @State private var activeSheet: ActiveSheet?
-    @State private var navigationTransitionStart: ContinuousClock.Instant?
-    @State private var navigationSurface: NavigationSurface = .list
-    @State private var navigationDirection: NavigationDirection = .toEditor
-    @StateObject private var transitionQueue = CoalescedTransitionQueue<NavigationSurface>()
+
+    private let listWidth: CGFloat = 320
 
     var body: some View {
         @Bindable var store = store
 
-        ZStack {
-            switch navigationSurface {
-            case .editor(let fileName):
-                if let binding = store.binding(forProject: fileName) {
-                    ProjectEditorView(
-                        document: binding,
-                        onBack: { store.selectedProjectFileName = nil },
-                        onAddBlock: { activeSheet = .blockPicker(fileName: fileName) },
-                        onShowHistory: { activeSheet = .history(fileName: fileName) }
-                    )
-                    .slidingPanel(isPresented: store.editingBlockID != nil) {
-                        if let blockID = store.editingBlockID,
-                           let blockBinding = blockBinding(for: blockID, in: binding) {
-                            BlockEditorPanel(block: blockBinding) {
-                                store.editingBlockID = nil
-                            }
+        HStack(spacing: 0) {
+            ProjectsListView()
+                .frame(width: listWidth)
+
+            Divider()
+
+            if let fileName = store.selectedProjectFileName,
+               let binding = store.binding(forProject: fileName) {
+                ProjectEditorView(
+                    document: binding,
+                    onAddBlock: { activeSheet = .blockPicker(fileName: fileName) },
+                    onShowHistory: { activeSheet = .history(fileName: fileName) }
+                )
+                .slidingPanel(isPresented: store.editingBlockID != nil) {
+                    if let blockID = store.editingBlockID,
+                       let blockBinding = blockBinding(for: blockID, in: binding) {
+                        BlockEditorPanel(block: blockBinding) {
+                            store.editingBlockID = nil
                         }
                     }
-                    .onReceive(NotificationCenter.default.publisher(for: .subtextNewItem)) { _ in
-                        activeSheet = .blockPicker(fileName: fileName)
-                    }
-                    .transition(editorTransition)
-                    .id("editor.\(fileName)")
-                } else {
-                    ProjectsListView()
-                        .transition(listTransition)
-                        .onAppear {
-                            store.selectedProjectFileName = nil
-                        }
                 }
-            case .list:
-                ProjectsListView()
-                    .transition(listTransition)
-                    .id("list")
+                .onReceive(NotificationCenter.default.publisher(for: .subtextNewItem)) { _ in
+                    activeSheet = .blockPicker(fileName: fileName)
+                }
+                .id("editor.\(fileName)")
+            } else {
+                noSelectionPlaceholder
             }
         }
+        .animation(.easeOut(duration: 0.20), value: store.selectedProjectFileName)
         .sheet(item: $activeSheet) { sheet in
             switch sheet {
             case .blockPicker(let fileName):
@@ -76,87 +68,19 @@ struct ProjectsRootView: View {
                 ProjectHistoryPanel(fileName: fileName)
             }
         }
-        .onAppear {
-            navigationSurface = surface(for: store.selectedProjectFileName)
-        }
-        .onChange(of: store.selectedProjectFileName) { oldValue, newValue in
-            guard oldValue != newValue else { return }
-            transitionSurface(to: surface(for: newValue), oldValue: oldValue, newValue: newValue)
-        }
-        .onDisappear {
-            transitionQueue.reset()
-        }
     }
 
-    private var editorTransition: AnyTransition {
-        .asymmetric(
-            insertion: .move(edge: navigationDirection == .toEditor ? .trailing : .leading).combined(with: .opacity),
-            removal: .move(edge: navigationDirection == .toEditor ? .leading : .trailing).combined(with: .opacity)
-        )
-    }
-
-    private var listTransition: AnyTransition {
-        .asymmetric(
-            insertion: .move(edge: navigationDirection == .toEditor ? .leading : .trailing).combined(with: .opacity),
-            removal: .move(edge: navigationDirection == .toEditor ? .trailing : .leading).combined(with: .opacity)
-        )
-    }
-
-    private func surface(for fileName: String?) -> NavigationSurface {
-        if let fileName { return .editor(fileName: fileName) }
-        return .list
-    }
-
-    private func transitionSurface(to target: NavigationSurface, oldValue: String?, newValue: String?) {
-        navigationDirection = target == .list ? .toList : .toEditor
-        let animateAsSwap = navigationSurface.isEditor && target.isEditor
-        let duration = animateAsSwap ? UXMotion.editorSwapDuration : UXMotion.navigationDuration
-        transitionQueue.run(
-            to: target,
-            duration: duration,
-            current: { navigationSurface }
-        ) { next in
-            withAnimation(UXMotion.easeInOut(duration: duration)) {
-                navigationSurface = next
-            }
+    @ViewBuilder
+    private var noSelectionPlaceholder: some View {
+        VStack(spacing: 12) {
+            Image(systemName: "doc.text")
+                .font(.system(size: 36, weight: .light))
+                .foregroundStyle(.tertiary)
+            Text("Select a project to start editing")
+                .font(.callout)
+                .foregroundStyle(.tertiary)
         }
-
-        let started = ContinuousClock().now
-        navigationTransitionStart = started
-        Task { @MainActor in
-            await Task.yield()
-            let direction = if oldValue == nil, newValue != nil {
-                "list_to_editor"
-            } else if oldValue != nil, newValue == nil {
-                "editor_to_list"
-            } else {
-                "editor_to_editor"
-            }
-            store.recordUXMetric("projects.navigation.transition", started: started, metadata: direction)
-            if navigationTransitionStart == started {
-                navigationTransitionStart = nil
-            }
-        }
-    }
-
-    private enum NavigationDirection {
-        case toEditor
-        case toList
-    }
-
-    private enum NavigationSurface: Equatable {
-        case list
-        case editor(fileName: String)
-
-        var isEditor: Bool {
-            if case .editor = self { return true }
-            return false
-        }
-
-        var fileName: String? {
-            if case .editor(let fileName) = self { return fileName }
-            return nil
-        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private enum ActiveSheet: Identifiable {
