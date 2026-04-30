@@ -162,7 +162,9 @@ enum ProjectBlock: Equatable, Sendable, Identifiable {
         case .projectSnapshot(let snapshot):
             return snapshot.projectTitle
         case .keyStats(let stats):
-            return stats.items.map { "\($0.label): \($0.value)\($0.unit.map { " \($0)" } ?? "")" }.joined(separator: "  •  ")
+            return stats.items.map {
+                "\($0.label): \($0.valuePrefix ?? "")\($0.value)\($0.unit.map { " \($0)" } ?? "")"
+            }.joined(separator: "  •  ")
         case .goalsMetrics(let goals):
             return goals.items.map(\.goal).joined(separator: "  •  ")
         case .quote(let q):
@@ -217,9 +219,9 @@ enum ProjectBlock: Equatable, Sendable, Identifiable {
         case .keyStats: .keyStats(KeyStatsBlock(
             title: "Key stats",
             items: [
-                KeyStatsBlock.Item(label: "Residents impacted", value: "", unit: nil, context: nil, lastUpdated: ISO8601Date.today()),
-                KeyStatsBlock.Item(label: "Progress", value: "", unit: "%", context: nil, lastUpdated: ISO8601Date.today()),
-                KeyStatsBlock.Item(label: "Spend to date", value: "", unit: nil, context: nil, lastUpdated: ISO8601Date.today())
+                KeyStatsBlock.Item(label: "Residents impacted", valuePrefix: nil, value: "", unit: nil, context: nil, lastUpdated: ISO8601Date.today()),
+                KeyStatsBlock.Item(label: "Progress", valuePrefix: nil, value: "", unit: "%", context: nil, lastUpdated: ISO8601Date.today()),
+                KeyStatsBlock.Item(label: "Spend to date", valuePrefix: nil, value: "", unit: nil, context: nil, lastUpdated: ISO8601Date.today())
             ]
         ))
         case .goalsMetrics: .goalsMetrics(GoalsMetricsBlock(
@@ -384,6 +386,7 @@ struct KeyStatsBlock: Equatable, Sendable {
     struct Item: Equatable, Identifiable, Sendable {
         var id: UUID = UUID()
         var label: String
+        var valuePrefix: String?
         var value: String
         var unit: String?
         var context: String?
@@ -600,6 +603,7 @@ extension ProjectSnapshotBlock {
 extension KeyStatsBlock.Item {
     static func == (lhs: KeyStatsBlock.Item, rhs: KeyStatsBlock.Item) -> Bool {
         lhs.label == rhs.label
+            && lhs.valuePrefix == rhs.valuePrefix
             && lhs.value == rhs.value
             && lhs.unit == rhs.unit
             && lhs.context == rhs.context

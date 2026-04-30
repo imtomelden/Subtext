@@ -56,28 +56,52 @@ struct ProjectInspectorPanel: View {
 
     // MARK: - Validation
 
-    @ViewBuilder
     private var validationRow: some View {
-        if !validationIssues.isEmpty || isValidating {
-            HStack(spacing: 8) {
-                if isValidating {
-                    ProgressView().controlSize(.mini)
-                    Text("Validating…")
-                        .font(.caption2)
-                        .foregroundStyle(Tokens.Text.tertiary)
-                } else {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundStyle(Color.subtextWarning)
-                    Text("\(validationIssues.count) issue\(validationIssues.count == 1 ? "" : "s")")
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(Color.subtextWarning)
-                }
-                Spacer()
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 8)
-            .help(validationIssues.map { "• \($0.message)" }.joined(separator: "\n"))
+        return ZStack(alignment: .leading) {
+            validationIdleState.opacity(!isValidating && validationIssues.isEmpty ? 1 : 0)
+            validationValidatingState.opacity(isValidating ? 1 : 0)
+            validationIssuesState.opacity(!isValidating && !validationIssues.isEmpty ? 1 : 0)
+        }
+        .frame(height: 18, alignment: .leading)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
+        .help(validationIssues.map { "• \($0.message)" }.joined(separator: "\n"))
+        .animation(nil, value: isValidating)
+        .animation(nil, value: validationIssues.count)
+    }
+
+    private var validationIdleState: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "checkmark.circle")
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(Tokens.Text.tertiary)
+            Text("No issues")
+                .font(.caption2)
+                .foregroundStyle(Tokens.Text.tertiary)
+            Spacer()
+        }
+    }
+
+    private var validationValidatingState: some View {
+        HStack(spacing: 8) {
+            ProgressView().controlSize(.mini)
+            Text("Validating…")
+                .font(.caption2)
+                .foregroundStyle(Tokens.Text.tertiary)
+            Spacer()
+        }
+    }
+
+    private var validationIssuesState: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(Color.subtextWarning)
+            Text("\(validationIssues.count) issue\(validationIssues.count == 1 ? "" : "s")")
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(Color.subtextWarning)
+                .monospacedDigit()
+            Spacer()
         }
     }
 

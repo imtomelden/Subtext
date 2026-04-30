@@ -16,6 +16,8 @@ struct KeyStatsBlockEditor: View {
                         VStack(alignment: .leading, spacing: 8) {
                             TextField("Label", text: label(at: idx))
                                 .textFieldStyle(.roundedBorder)
+                            TextField("Value prefix (optional)", text: valuePrefix(at: idx))
+                                .textFieldStyle(.roundedBorder)
                             TextField("Value", text: value(at: idx))
                                 .textFieldStyle(.roundedBorder)
                             TextField("Unit (optional)", text: unit(at: idx))
@@ -41,6 +43,7 @@ struct KeyStatsBlockEditor: View {
                 Button {
                     block.items.append(.init(
                         label: "",
+                        valuePrefix: nil,
                         value: "",
                         unit: nil,
                         context: nil,
@@ -65,6 +68,12 @@ struct KeyStatsBlockEditor: View {
         Binding(
             get: { block.items[safe: idx]?.value ?? "" },
             set: { v in if idx < block.items.count { block.items[idx].value = v } }
+        )
+    }
+    private func valuePrefix(at idx: Int) -> Binding<String> {
+        Binding(
+            get: { block.items[safe: idx]?.valuePrefix ?? "" },
+            set: { v in if idx < block.items.count { block.items[idx].valuePrefix = v.isEmpty ? nil : v } }
         )
     }
     private func unit(at idx: Int) -> Binding<String> {

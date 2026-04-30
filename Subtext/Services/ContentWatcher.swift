@@ -23,6 +23,7 @@ final class ContentWatcher {
     private let coalesceLatency: CFTimeInterval
     private var stream: FSEventStreamRef?
     private var stamps: [URL: Date] = [:]
+    private var ownWriteSuppressionUntil: [URL: Date] = [:]
     private var watchedDirectories: Set<URL> = []
 
     init(
@@ -52,6 +53,7 @@ final class ContentWatcher {
         stamps = Dictionary(
             uniqueKeysWithValues: paths.map { ($0, Self.modDate(of: $0)) }
         )
+        ownWriteSuppressionUntil = [:]
         rebuildStream()
     }
 
@@ -70,10 +72,15 @@ final class ContentWatcher {
     /// immediately register as "new" if they later appear.
     func replaceWatched(_ paths: [URL]) {
         var next: [URL: Date] = [:]
+        var nextSuppression: [URL: Date] = [:]
         for path in paths {
             next[path] = stamps[path] ?? Self.modDate(of: path)
+            if let until = ownWriteSuppressionUntil[path] {
+                nextSuppression[path] = until
+            }
         }
         stamps = next
+        ownWriteSuppressionUntil = nextSuppression
         // Rebuild the stream only if the set of watched directories shifted —
         // most "I added a project" updates land within an already-watched
         // directory and don't need a new stream.
@@ -87,6 +94,9 @@ final class ContentWatcher {
     /// the new mtime as the baseline rather than an external change.
     func acknowledgeOwnWrite(_ url: URL) {
         stamps[url] = Self.modDate(of: url)
+        // FSEvents can lag a little behind the actual write. Keep a short
+        // suppression window so delayed callbacks from this save are ignored.
+        ownWriteSuppressionUntil[url] = Date().addingTimeInterval(2.0)
     }
 
     /// Current known mtime for a file — used by `CMSStore.save*` to do
@@ -157,6 +167,8 @@ final class ContentWatcher {
     }
 
     private func handleEventPaths(_ paths: [String]) {
+        let now = Date()
+        ownWriteSuppressionUntil = ownWriteSuppressionUntil.filter { $0.value > now }
         var changed: Set<URL> = []
         // FSEvents reports per-file paths thanks to `kFSEventStreamCreateFlagFileEvents`.
         // For each, see if it matches one of our tracked URLs and whether the
@@ -166,6 +178,10 @@ final class ContentWatcher {
             let url = URL(fileURLWithPath: raw)
             guard stamps.keys.contains(url) else { continue }
             let current = Self.modDate(of: url)
+            if let suppressUntil = ownWriteSuppressionUntil[url], suppressUntil > now {
+                stamps[url] = current
+                continue
+            }
             if current != stamps[url] {
                 stamps[url] = current
                 changed.insert(url)
@@ -181,6 +197,10 @@ final class ContentWatcher {
             let parent = url.deletingLastPathComponent().path(percentEncoded: false)
             guard reportedDirs.contains(parent) else { continue }
             let current = Self.modDate(of: url)
+            if let suppressUntil = ownWriteSuppressionUntil[url], suppressUntil > now {
+                stamps[url] = current
+                continue
+            }
             if current != previous {
                 stamps[url] = current
                 changed.insert(url)

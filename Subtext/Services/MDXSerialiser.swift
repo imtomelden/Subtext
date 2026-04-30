@@ -80,8 +80,12 @@ enum MDXSerialiser {
         case .keyStats(let b):
             var l = ["  - type: keyStats", "    \(keyValue("title", quoted: b.title))", "    items:"]
             for item in b.items {
+                let combinedValue = "\(item.valuePrefix ?? "")\(item.value)"
                 l.append("      - \(keyValue("label", quoted: item.label))")
-                l.append("        \(keyValue("value", quoted: item.value))")
+                if let valuePrefix = item.valuePrefix, !valuePrefix.isEmpty {
+                    l.append("        \(keyValue("valuePrefix", quoted: valuePrefix))")
+                }
+                l.append("        \(keyValue("value", quoted: combinedValue))")
                 if let unit = item.unit, !unit.isEmpty { l.append("        \(keyValue("unit", quoted: unit))") }
                 if let context = item.context, !context.isEmpty { l.append("        \(keyValue("context", quoted: context))") }
                 l.append("        \(keyValue("lastUpdated", quoted: item.lastUpdated))")

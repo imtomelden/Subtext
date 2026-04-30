@@ -374,9 +374,18 @@ enum MDXParser {
         case "keyStats":
             let items = (map["items"]?.sequenceValue ?? []).compactMap { node -> KeyStatsBlock.Item? in
                 guard case .mapping(let m) = node else { return nil }
+                let valuePrefix = m["valuePrefix"]?.stringValue
+                let rawValue = m["value"]?.stringValue ?? ""
+                let normalisedValue: String
+                if let valuePrefix, !valuePrefix.isEmpty, rawValue.hasPrefix(valuePrefix) {
+                    normalisedValue = String(rawValue.dropFirst(valuePrefix.count))
+                } else {
+                    normalisedValue = rawValue
+                }
                 return KeyStatsBlock.Item(
                     label: m["label"]?.stringValue ?? "",
-                    value: m["value"]?.stringValue ?? "",
+                    valuePrefix: valuePrefix,
+                    value: normalisedValue,
                     unit: m["unit"]?.stringValue,
                     context: m["context"]?.stringValue,
                     lastUpdated: m["lastUpdated"]?.stringValue ?? ""
@@ -466,6 +475,7 @@ enum MDXParser {
                 guard case .mapping(let m) = node else { return nil }
                 return KeyStatsBlock.Item(
                     label: m["label"]?.stringValue ?? "",
+                    valuePrefix: nil,
                     value: m["value"]?.stringValue ?? "",
                     unit: nil,
                     context: m["detail"]?.stringValue,

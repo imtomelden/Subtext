@@ -82,6 +82,50 @@ final class BuildServiceTests: XCTestCase {
         XCTAssertEqual(LegacyBlockMigration.parserCanonicalType(for: "quote"), "quote")
     }
 
+    func testKeyStatsValuePrefixParsesAndSerialises() throws {
+        let mdx = """
+        ---
+        title: "T"
+        slug: t
+        description: "D"
+        date: 2026-01-01
+        ownership: work
+        tags: []
+        blocks:
+          - type: keyStats
+            title: "Key stats"
+            items:
+              - label: "Budget"
+                valuePrefix: "$"
+                value: "1.2"
+                unit: "m"
+                context: "Approximate"
+                lastUpdated: "2026-04-30"
+        ---
+
+        Body
+        """
+
+        let parsed = try MDXParser.parse(mdx, fileName: "t.mdx")
+        guard let keyStatsBlock = parsed.frontmatter.blocks.first(where: {
+            if case .keyStats = $0 { return true }
+            return false
+        }) else {
+            XCTFail("Expected keyStats block")
+            return
+        }
+        guard case .keyStats(let block) = keyStatsBlock else {
+            XCTFail("Expected keyStats block")
+            return
+        }
+        XCTAssertEqual(block.items.first?.valuePrefix, "$")
+        XCTAssertEqual(block.items.first?.value, "1.2")
+
+        let serialised = MDXSerialiser.serialise(parsed)
+        XCTAssertTrue(serialised.contains("valuePrefix: \"$\""))
+        XCTAssertTrue(serialised.contains("value: \"$1.2\""))
+    }
+
     func testSynthesiseLayoutInjectsDefaultOrderFromLegacyFrontmatter() throws {
         let mdx = """
         ---
