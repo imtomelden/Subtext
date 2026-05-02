@@ -314,13 +314,27 @@ struct VideoShowcaseBlockEditor: View {
     private var sourcePreview: some View {
         switch block.source {
         case .youtube(let videoId):
-            embedSourcePreview(
-                idLabel: videoId.isEmpty ? "No YouTube ID set yet." : "YouTube ID: \(videoId)"
-            )
+            HStack(spacing: 10) {
+                youtubeThumbnail(videoId: videoId)
+                VStack(alignment: .leading, spacing: 3) {
+                    if videoId.isEmpty {
+                        Text("No YouTube ID set yet.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        Text("YouTube ID: \(videoId)")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
         case .vimeo(let videoId):
-            embedSourcePreview(
-                idLabel: videoId.isEmpty ? "No Vimeo ID set yet." : "Vimeo ID: \(videoId)"
+            Label(
+                videoId.isEmpty ? "No Vimeo ID set yet." : "Vimeo ID: \(videoId)",
+                systemImage: "play.rectangle.fill"
             )
+            .font(.caption)
+            .foregroundStyle(.secondary)
         case .file(let src, let poster, _, _, _):
             HStack(spacing: 10) {
                 AssetMediaThumbnail(src: poster ?? src, size: 52, cornerRadius: SubtextUI.Radius.small)
@@ -340,10 +354,31 @@ struct VideoShowcaseBlockEditor: View {
     }
 
     @ViewBuilder
-    private func embedSourcePreview(idLabel: String) -> some View {
-        Label(idLabel, systemImage: "play.rectangle.fill")
-            .font(.caption)
-            .foregroundStyle(.secondary)
+    private func youtubeThumbnail(videoId: String) -> some View {
+        let size: CGFloat = 72
+        let radius = SubtextUI.Radius.small
+        if !videoId.isEmpty,
+           let url = URL(string: "https://img.youtube.com/vi/\(videoId)/mqdefault.jpg") {
+            AsyncImage(url: url) { phase in
+                switch phase {
+                case .success(let image):
+                    image.resizable().aspectRatio(contentMode: .fill)
+                default:
+                    Image(systemName: "play.rectangle.fill")
+                        .font(.system(size: size * 0.3))
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .frame(width: size, height: size * 0.56)
+            .clipShape(RoundedRectangle(cornerRadius: radius, style: .continuous))
+            .background(SubtextUI.Surface.subtleFill, in: RoundedRectangle(cornerRadius: radius, style: .continuous))
+        } else {
+            Image(systemName: "play.rectangle.fill")
+                .font(.system(size: 18))
+                .foregroundStyle(.secondary)
+                .frame(width: size, height: size * 0.56)
+                .background(SubtextUI.Surface.subtleFill, in: RoundedRectangle(cornerRadius: radius, style: .continuous))
+        }
     }
 
     private func captionBinding(index: Int, keyPath: WritableKeyPath<VideoShowcaseBlock.CaptionTrack, String>) -> Binding<String> {

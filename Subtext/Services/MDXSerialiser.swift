@@ -141,6 +141,8 @@ enum MDXSerialiser {
             return ["  - type: tagList"]
         case .relatedProjects:
             return ["  - type: relatedProjects"]
+        case .divider:
+            return ["  - type: divider"]
         case .quote(let b):
             var l = ["  - type: quote", "    \(keyValue("quote", quoted: b.quote))"]
             if let name = b.attributionName, !name.isEmpty { l.append("    \(keyValue("attributionName", quoted: name))") }

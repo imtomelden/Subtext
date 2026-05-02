@@ -8,14 +8,18 @@ struct ProjectEditorView: View {
 
     @Environment(CMSStore.self) private var store
     @Environment(\.contentDensity) private var density
+    @Environment(\.narrowLayout) private var narrowLayout
+    @Environment(FocusModeController.self) private var focusMode
     @AppStorage("SubtextEditorUseMonospacedSourceFont") private var useMonospacedSourceFont = true
-    @AppStorage("SubtextProjectFocusModeEnabled") private var focusModeEnabled = false
     @State private var slugManuallyEdited = false
+    @State private var editorAreaHeight: CGFloat = 600
     @State private var showSourcePreview = false
-    @State private var inspectorVisible = true
+    @State private var showAdvancedInspector = false
     @State private var bodySelection: NSRange = NSRange(location: 0, length: 0)
+    @State private var bodyEditorHeight: CGFloat = 260
     @State private var validationIssues: [ProjectValidationIssue] = []
     @State private var isValidating = false
+    @State private var blockDrag = DragReorderState(spacing: 0)
 
     var body: some View {
         editorContent
@@ -23,37 +27,55 @@ struct ProjectEditorView: View {
 
     @ViewBuilder
     private var editorContent: some View {
-        HStack(spacing: 0) {
-            // Main canvas — sticky toolbar + scrollable content
-            VStack(spacing: 0) {
-                toolbar
-                Divider()
-                ScrollView {
-                    VStack(alignment: .leading, spacing: density.sectionOuterSpacing) {
-                        if !focusModeEnabled {
-                            blocksCanvas
-                                .padding(.horizontal, horizontalPadding)
-                        }
+        VStack(spacing: 0) {
+            toolbar
+            Divider()
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    if !focusMode.isOn {
+                        ProjectMetaHeader(
+                            document: $document,
+                            validationIssues: validationIssues,
+                            isValidating: isValidating,
+                            slugManuallyEdited: $slugManuallyEdited,
+                            titleDerivedSlug: ProjectEditorView.slugify(document.frontmatter.title),
+                            onSyncSlug: {
+                                slugManuallyEdited = false
+                                document.frontmatter.slug = ProjectEditorView.slugify(document.frontmatter.title)
+                            },
+                            onShowInspector: { showAdvancedInspector = true }
+                        )
+                        .padding(.horizontal, 40)
+                    }
 
-                        bodyEditor
-                            .padding(.horizontal, horizontalPadding)
+                    bodyEditor
+                        .padding(.horizontal, 40)
+
+                    if !focusMode.isOn {
+                        blocksCanvas
+                            .padding(.horizontal, 40)
                             .padding(.bottom, 80)
                     }
-                    .padding(.top, density.canvasTopPadding)
                 }
+                .padding(.top, 30)
             }
-
-            // Inspector panel — frontmatter fields
-            if inspectorVisible && !focusModeEnabled {
-                Divider()
-                ProjectInspectorPanel(
-                    document: $document,
-                    validationIssues: validationIssues,
-                    isValidating: isValidating,
-                    slugManuallyEdited: slugManuallyEdited
-                )
-                .frame(width: 280)
+            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { h in
+                editorAreaHeight = h
             }
+        }
+        .sheet(isPresented: $showAdvancedInspector) {
+            ProjectInspectorPanel(
+                document: $document,
+                validationIssues: validationIssues,
+                isValidating: isValidating,
+                slugManuallyEdited: slugManuallyEdited,
+                titleDerivedSlug: ProjectEditorView.slugify(document.frontmatter.title),
+                onSyncSlugFromTitle: {
+                    slugManuallyEdited = false
+                    document.frontmatter.slug = ProjectEditorView.slugify(document.frontmatter.title)
+                }
+            )
+            .frame(minWidth: 360, minHeight: 500)
         }
         .modifier(ProjectEditorLifecycleModifier(
             document: $document,
@@ -107,50 +129,79 @@ struct ProjectEditorView: View {
                 isDirty: store.isProjectDirty(document.fileName),
                 lastPersistedAt: store.lastDraftPersistedAt
             )
+            .focusModeChrome()
 
             Spacer()
 
-            // Group 2 — file actions
-            Button {
-                NSWorkspace.shared.activateFileViewerSelecting([projectFileURL])
-            } label: {
-                Image(systemName: "folder")
+            // Group 2 — file actions (fade in focus mode)
+            Group {
+                Button {
+                    NSWorkspace.shared.activateFileViewerSelecting([projectFileURL])
+                } label: {
+                    Image(systemName: "folder")
+                }
+                .subtextButton(.icon)
+                .help("Reveal \(document.fileName) in Finder")
+
+                Button {
+                    showSourcePreview = true
+                } label: {
+                    Image(systemName: "curlybraces")
+                }
+                .subtextButton(.icon)
+                .help("Preview MDX source")
+
+                Button { onShowHistory() } label: {
+                    Image(systemName: "clock.arrow.circlepath")
+                }
+                .subtextButton(.icon)
+                .help("Version history")
+
+                toolbarDivider
+            }
+            .focusModeChrome()
+
+            // Group 3 — view toggles (focus button always visible)
+            Button { focusMode.toggle() } label: {
+                Image(systemName: focusMode.isOn ? "rectangle.inset.filled.and.person.filled" : "rectangle.inset.filled")
+                    .foregroundStyle(focusMode.isOn ? Color.subtextAccent : Tokens.Text.secondary)
+                    .toggleBounce(trigger: focusMode.isOn)
             }
             .subtextButton(.icon)
-            .help("Reveal \(document.fileName) in Finder")
-
-            Button {
-                showSourcePreview = true
-            } label: {
-                Image(systemName: "curlybraces")
+            .help(focusMode.isOn ? "Disable focus mode" : "Enable focus mode")
+            .contextMenu {
+                Button {
+                    focusMode.level = .reading
+                    if !focusMode.isOn { focusMode.toggle() }
+                } label: {
+                    Label(
+                        "Focus: Sidebar only",
+                        systemImage: focusMode.level == .reading && focusMode.isOn ? "checkmark.circle.fill" : "sidebar.left"
+                    )
+                }
+                Button {
+                    focusMode.level = .writing
+                    if !focusMode.isOn { focusMode.toggle() }
+                } label: {
+                    Label(
+                        "Focus: Full (typewriter)",
+                        systemImage: focusMode.level == .writing && focusMode.isOn ? "checkmark.circle.fill" : "person.fill"
+                    )
+                }
+                Divider()
+                Button {
+                    if focusMode.isOn {
+                        focusMode.cycleLevel()
+                    } else {
+                        focusMode.level = .writing
+                        focusMode.toggle()
+                    }
+                } label: {
+                    Label("Cycle focus level", systemImage: "arrow.triangle.2.circlepath")
+                }
             }
-            .subtextButton(.icon)
-            .help("Preview MDX source")
 
-            Button { onShowHistory() } label: {
-                Image(systemName: "clock.arrow.circlepath")
-            }
-            .subtextButton(.icon)
-            .help("Version history")
-
-            toolbarDivider
-
-            // Group 3 — view toggles
-            Button { focusModeEnabled.toggle() } label: {
-                Image(systemName: focusModeEnabled ? "rectangle.inset.filled.and.person.filled" : "rectangle.inset.filled")
-                    .foregroundStyle(focusModeEnabled ? Color.subtextAccent : Tokens.Text.secondary)
-            }
-            .subtextButton(.icon)
-            .help(focusModeEnabled ? "Disable focus mode" : "Enable focus mode")
-
-            Button { inspectorVisible.toggle() } label: {
-                Image(systemName: "sidebar.right")
-                    .foregroundStyle(inspectorVisible ? Color.subtextAccent : Tokens.Text.secondary)
-            }
-            .subtextButton(.icon)
-            .help(inspectorVisible ? "Hide inspector" : "Show inspector")
-
-            toolbarDivider
+            toolbarDivider.focusModeChrome()
 
             // Group 4 — primary action
             Button {
@@ -159,6 +210,7 @@ struct ProjectEditorView: View {
                 Label("Add block", systemImage: "plus")
             }
             .subtextButton(.primary)
+            .focusModeChrome()
         }
         .padding(.horizontal, horizontalPadding)
         .padding(.vertical, 10)
@@ -186,31 +238,32 @@ struct ProjectEditorView: View {
 
     @ViewBuilder
     private var blocksCanvas: some View {
+        @Bindable var store = store
         VStack(alignment: .leading, spacing: 0) {
-            // Section header
+            // Section header — ALL-CAPS design label
             HStack(spacing: 8) {
-                Text("Blocks")
-                    .font(.callout.weight(.semibold))
-                    .foregroundStyle(Tokens.Text.primary)
+                Text("BLOCKS")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(Tokens.Text.tertiary)
+                    .tracking(0.9)
                 if document.frontmatter.blocks.count > 0 {
                     Text("\(document.frontmatter.blocks.count)")
-                        .font(.caption2.weight(.semibold))
+                        .font(.system(size: 9.5, weight: .bold))
                         .foregroundStyle(Tokens.Text.tertiary)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(Capsule().fill(Color.subtextSubtleFill))
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 1)
+                        .background(Capsule().fill(Tokens.Fill.tag))
                 }
                 if document.frontmatter.blocks.count > 1 {
-                    Text("⌘↑↓ to reorder")
-                        .font(.caption2)
+                    Text("Drag or ⌘↑↓ to reorder")
+                        .font(.system(size: 10.5))
                         .foregroundStyle(Tokens.Text.tertiary)
                 }
                 Spacer()
             }
-            .padding(.bottom, 10)
+            .padding(.bottom, 12)
 
             if document.frontmatter.blocks.isEmpty {
-                // Minimal empty state — text button, no dashed border
                 Button(action: onAddBlock) {
                     HStack(spacing: 6) {
                         Image(systemName: "plus.circle")
@@ -225,78 +278,98 @@ struct ProjectEditorView: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel("Add first block")
             } else {
-                // Block list with divider separators instead of spacing
-                Surface(.surface) {
-                    ReorderableVStack(
-                        items: document.frontmatter.blocks,
-                        spacing: 0
-                    ) { from, to in
-                        document.frontmatter.blocks.move(fromOffsets: from, toOffset: to)
-                    } row: { block, controls in
-                        VStack(spacing: 0) {
-                            if block.id != document.frontmatter.blocks.first?.id {
-                                Divider().padding(.leading, 14)
-                            }
-                            BlockCardView(
-                                block: block,
-                                reorderControls: controls,
-                                onEdit: { store.editingBlockID = block.id },
-                                onDelete: { deleteBlock(block) }
-                            )
-                        }
+                // Open flat list — top border only, no card wrapper
+                Rectangle()
+                    .fill(Tokens.Border.subtle)
+                    .frame(height: 1)
+
+                ReorderableVStack(
+                    items: document.frontmatter.blocks,
+                    spacing: 0,
+                    dragState: blockDrag
+                ) { from, to in
+                    document.frontmatter.blocks.move(fromOffsets: from, toOffset: to)
+                } row: { block, controls in
+                    if let idx = document.frontmatter.blocks.firstIndex(where: { $0.id == block.id }) {
+                        BlockRowView(
+                            block: $document.frontmatter.blocks[idx],
+                            isExpanded: store.editingBlockID == block.id,
+                            reorderControls: controls,
+                            onToggleExpand: {
+                                withAnimation(Motion.spring) {
+                                    store.editingBlockID = store.editingBlockID == block.id ? nil : block.id
+                                }
+                            },
+                            onDelete: { deleteBlock(block) },
+                            onDuplicate: { duplicateBlock(block) }
+                        )
                     }
                 }
             }
         }
-        .frame(maxWidth: 760, alignment: .leading)
+        .frame(maxWidth: 680, alignment: .leading)
         .frame(maxWidth: .infinity, alignment: .center)
     }
 
     @ViewBuilder
     private var bodyEditor: some View {
-        Surface(.surface) {
-            VStack(alignment: .leading, spacing: SubtextUI.Spacing.small + 2) {
-                HStack(alignment: .firstTextBaseline, spacing: 10) {
-                    Text("Body (markdown)")
-                        .font(SubtextUI.Typography.sectionTitle)
+        VStack(alignment: .leading, spacing: 0) {
+            // Minimal formatting bar
+            HStack(alignment: .center, spacing: 1) {
+                Text("BODY")
+                    .font(.system(size: 9.5, weight: .semibold))
+                    .foregroundStyle(Tokens.Text.tertiary)
+                    .tracking(0.9)
+                    .padding(.trailing, 8)
 
-                    Spacer()
+                MarkdownInsertToolbar(text: $document.body, selection: $bodySelection)
 
-                    Menu {
-                        Toggle("Monospaced source font", isOn: $useMonospacedSourceFont)
-                    } label: {
-                        Image(systemName: "slider.horizontal.3")
-                    }
-                    .menuStyle(.borderlessButton)
-                    .help("Editor display options")
-                    .accessibilityLabel("Editor display options")
+                Spacer()
 
-                    MarkdownInsertToolbar(text: $document.body, selection: $bodySelection)
+                Menu {
+                    Toggle("Monospaced source font", isOn: $useMonospacedSourceFont)
+                } label: {
+                    Image(systemName: "slider.horizontal.3")
+                        .font(.system(size: 11))
+                        .foregroundStyle(Tokens.Text.tertiary)
+                        .frame(width: 22, height: 22)
                 }
-
-                if focusModeEnabled {
-                    Label("Focus mode keeps only the body editor visible. Use the inset toggle in the toolbar to restore panels.", systemImage: "rectangle.inset.filled")
-                        .font(SubtextUI.Typography.caption)
-                        .foregroundStyle(.secondary)
-                        .accessibilityLabel("Focus mode enabled. Only body editor is visible.")
-                        .accessibilityHint("Use the focus mode toolbar button to restore frontmatter and block panels.")
-                }
-
-                sourceEditor
+                .menuStyle(.borderlessButton)
+                .help("Editor display options")
+                .accessibilityLabel("Editor display options")
             }
+            .padding(.bottom, 10)
+
+            Rectangle()
+                .fill(Tokens.Border.subtle)
+                .frame(height: 1)
+                .padding(.bottom, 16)
+
+            if focusMode.isOn {
+                Label("Focus mode — only the body editor is visible.", systemImage: "rectangle.inset.filled")
+                    .font(.caption)
+                    .foregroundStyle(Tokens.Text.tertiary)
+                    .padding(.bottom, 8)
+            }
+
+            sourceEditor
         }
-        .padding(SubtextUI.Spacing.large)
-        .frame(maxWidth: 760, alignment: .leading)
+        .padding(.bottom, focusMode.isOn ? 0 : 28)
+        .frame(maxWidth: 680, alignment: .leading)
         .frame(maxWidth: .infinity, alignment: .center)
     }
 
     private var sourceEditor: some View {
-        MarkdownSourceEditor(
+        let typewriterHeight = focusMode.isOn ? editorAreaHeight : nil
+        return MarkdownSourceEditor(
             text: $document.body,
             selection: $bodySelection,
-            font: nsSourceFont
+            font: nsSourceFont,
+            contentHeight: focusMode.isOn ? nil : $bodyEditorHeight,
+            typewriterHeight: typewriterHeight
         )
-        .frame(maxWidth: .infinity, minHeight: 260, alignment: .topLeading)
+        .frame(height: typewriterHeight ?? bodyEditorHeight)
+        .frame(maxWidth: .infinity, alignment: .topLeading)
         .clipShape(RoundedRectangle(cornerRadius: SubtextUI.Radius.large, style: .continuous))
         .accessibilityLabel("Markdown source editor")
     }
@@ -307,6 +380,15 @@ struct ProjectEditorView: View {
         return useMonospacedSourceFont
             ? NSFont.monospacedSystemFont(ofSize: size, weight: .regular)
             : NSFont.systemFont(ofSize: size)
+    }
+
+    private func duplicateBlock(_ block: ProjectBlock) {
+        guard let idx = document.frontmatter.blocks.firstIndex(where: { $0.id == block.id }) else { return }
+        let copy = block.duplicated()
+        document.frontmatter.blocks.insert(copy, at: idx + 1)
+        withAnimation(Motion.spring) {
+            store.editingBlockID = copy.id
+        }
     }
 
     private func deleteBlock(_ block: ProjectBlock) {
@@ -353,7 +435,7 @@ struct ProjectEditorView: View {
         bodySelection = result.selection
     }
 
-    fileprivate static func slugify(_ s: String) -> String {
+    static func slugify(_ s: String) -> String {
         s.lowercased()
             .replacingOccurrences(of: "'", with: "")
             .replacingOccurrences(of: "\"", with: "")

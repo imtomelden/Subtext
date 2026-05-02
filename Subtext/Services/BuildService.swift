@@ -714,4 +714,26 @@ actor BuildService {
         let (out, _) = readPipesToEndAndWait(outPipe: outPipe, errPipe: errPipe, proc)
         return out
     }
+
+    /// Runs `/bin/sh -c` from the repo root (optional pre-publish hook).
+    func runShellScript(_ script: String) async throws -> (exitCode: Int32, output: String) {
+        let proc = Process()
+        proc.currentDirectoryURL = RepoConstants.repoRoot
+        proc.executableURL = URL(fileURLWithPath: "/bin/sh")
+        proc.arguments = ["-c", script]
+        proc.environment = subprocessEnvironment()
+        let outPipe = Pipe()
+        let errPipe = Pipe()
+        proc.standardOutput = outPipe
+        proc.standardError = errPipe
+
+        try proc.run()
+        let (stdout, stderr) = await Task.detached {
+            readPipesToEndAndWait(outPipe: outPipe, errPipe: errPipe, proc)
+        }.value
+
+        let parts = [stdout, stderr].map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
+        let combined = parts.joined(separator: "\n")
+        return (proc.terminationStatus, combined.isEmpty ? "" : combined + "\n")
+    }
 }

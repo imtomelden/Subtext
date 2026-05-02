@@ -7,6 +7,14 @@ struct SubtextApp: App {
     @State private var devServer = DevServerController()
     @State private var git = GitController()
     @State private var publish = PublishController()
+    @State private var theme = Theme()
+    // Lifted from ContentView so these are available to SubtextModalModifier's
+    // overlay content (CommandPalette etc.). ViewModifier siblings of `outer`
+    // do not inherit environment values applied *to* the content — they only
+    // see the WindowGroup-level environment — so anything a modal needs must
+    // be injected here.
+    @State private var focusMode = FocusModeController()
+    @State private var recents = RecentsStore()
 
     var body: some Scene {
         // `WindowGroup` (instead of single-instance `Window`) so the user
@@ -23,6 +31,10 @@ struct SubtextApp: App {
                 .environment(devServer)
                 .environment(git)
                 .environment(publish)
+                .environment(theme)
+                .environment(focusMode)
+                .environment(recents)
+                .tint(theme.accent)
                 .frame(
                     minWidth: RepoConstants.minimumWindowSize.width,
                     minHeight: RepoConstants.minimumWindowSize.height
@@ -103,6 +115,16 @@ struct SubtextApp: App {
                 NotificationCenter.default.post(name: .subtextToggleFocusMode, object: nil)
             }
             .keyboardShortcut("f", modifiers: [.command, .control])
+
+            Button("Cycle Focus Level") {
+                NotificationCenter.default.post(name: .subtextCycleFocusLevel, object: nil)
+            }
+            .keyboardShortcut(.return, modifiers: [.command, .shift])
+
+            Button("Find and Replace in Project Body…") {
+                NotificationCenter.default.post(name: .subtextMarkdownShowReplace, object: nil)
+            }
+            .keyboardShortcut("f", modifiers: [.command, .option])
         }
         CommandGroup(after: .textEditing) {
             Button("Bold in Project Body") {
@@ -199,6 +221,8 @@ extension Notification.Name {
     static let subtextMoveItemUp = Notification.Name("SubtextMoveItemUp")
     static let subtextMoveItemDown = Notification.Name("SubtextMoveItemDown")
     static let subtextToggleFocusMode = Notification.Name("SubtextToggleFocusMode")
+    static let subtextCycleFocusLevel = Notification.Name("SubtextCycleFocusLevel")
+    static let subtextMarkdownShowReplace = Notification.Name("SubtextMarkdownShowReplace")
     static let subtextOpenKeyboardShortcuts = Notification.Name("SubtextOpenKeyboardShortcuts")
     static let subtextOpenEventLog = Notification.Name("SubtextOpenEventLog")
     static let subtextProjectInsertBold = Notification.Name("SubtextProjectInsertBold")

@@ -43,8 +43,8 @@ struct DraggableCard<Content: View, Leading: View, Trailing: View>: View {
                 trailing()
             }
             .padding(.horizontal, 14)
-            .padding(.vertical, 10)
-            .frame(minHeight: 56)
+            .padding(.vertical, 7)
+            .frame(minHeight: 40)
         }
     }
 }

@@ -11,6 +11,9 @@ final class GitController {
         case loading
         case committing
         case pushing
+        case syncing
+        case checkingOut
+        case stashing
     }
 
     enum Outcome: Equatable {
@@ -23,6 +26,8 @@ final class GitController {
     private(set) var activity: Activity = .idle
     private(set) var outcome: Outcome = .none
     private(set) var lastRefresh: Date?
+    private(set) var availableBranches: [String] = []
+    private(set) var hasStash: Bool = false
 
     private let service = GitService()
     private var currentTask: Task<Void, Never>?
@@ -40,6 +45,7 @@ final class GitController {
             defer { activity = .idle }
             do {
                 status = try await service.status()
+                hasStash = (try? await service.hasStash()) ?? false
                 lastRefresh = Date()
                 if case .failure = outcome { outcome = .none }
             } catch {
@@ -49,9 +55,9 @@ final class GitController {
         }
     }
 
-    /// Commits every local change (staged + unstaged + untracked) with
-    /// `message`.
-    func commit(message: String) {
+    /// Commits either everything (`stagingPaths` nil) or only the given paths
+    /// (after resetting the index and re-staging the selection).
+    func commit(message: String, stagingPaths: Set<String>? = nil) {
         guard !isBusy else { return }
         currentTask?.cancel()
         currentTask = Task { [weak self] in
@@ -59,7 +65,12 @@ final class GitController {
             activity = .committing
             defer { activity = .idle }
             do {
-                status = try await service.commitAll(message: message)
+                if let stagingPaths, !stagingPaths.isEmpty {
+                    status = try await service.commit(message: message, stagingPaths: Array(stagingPaths))
+                } else {
+                    status = try await service.commitAll(message: message)
+                }
+                hasStash = (try? await service.hasStash()) ?? hasStash
                 outcome = .success("Committed on \(status.branch).")
             } catch {
                 outcome = .failure(describe(error))
@@ -90,12 +101,12 @@ final class GitController {
     /// chain off the *exact* completion (e.g. `PublishController` driving
     /// the publish pipeline), prefer `commitAndPushAwait(message:)` which
     /// reports phases through a callback and returns the resolved outcome.
-    func commitAndPush(message: String) {
+    func commitAndPush(message: String, stagingPaths: Set<String>? = nil) {
         guard !isBusy else { return }
         currentTask?.cancel()
         currentTask = Task { [weak self] in
             guard let self else { return }
-            _ = await runCommitAndPush(message: message, onPhase: nil)
+            _ = await runCommitAndPush(message: message, stagingPaths: stagingPaths, onPhase: nil)
         }
     }
 
@@ -106,21 +117,27 @@ final class GitController {
     @discardableResult
     func commitAndPushAwait(
         message: String,
+        stagingPaths: Set<String>? = nil,
         onPhase: ((Activity) -> Void)? = nil
     ) async -> Outcome {
         guard !isBusy else { return outcome }
         currentTask?.cancel()
-        return await runCommitAndPush(message: message, onPhase: onPhase)
+        return await runCommitAndPush(message: message, stagingPaths: stagingPaths, onPhase: onPhase)
     }
 
     private func runCommitAndPush(
         message: String,
+        stagingPaths: Set<String>?,
         onPhase: ((Activity) -> Void)?
     ) async -> Outcome {
         do {
             activity = .committing
             onPhase?(.committing)
-            _ = try await service.commitAll(message: message)
+            if let stagingPaths, !stagingPaths.isEmpty {
+                _ = try await service.commit(message: message, stagingPaths: Array(stagingPaths))
+            } else {
+                _ = try await service.commitAll(message: message)
+            }
             activity = .pushing
             onPhase?(.pushing)
             status = try await service.push()
@@ -130,12 +147,14 @@ final class GitController {
             outcome = result
             activity = .idle
             onPhase?(.idle)
+            hasStash = (try? await service.hasStash()) ?? hasStash
             return result
         } catch {
             let result: Outcome = .failure(describe(error))
             outcome = result
             do {
                 status = try await service.status()
+                hasStash = (try? await service.hasStash()) ?? false
             } catch {
                 // Keep previously shown failure.
             }
@@ -147,6 +166,112 @@ final class GitController {
 
     func clearOutcome() {
         outcome = .none
+    }
+
+    /// Loads the list of local branches into `availableBranches`.
+    func loadBranches() {
+        Task { [weak self] in
+            guard let self else { return }
+            availableBranches = (try? await service.branches()) ?? []
+        }
+    }
+
+    /// Checks out `branch`, then refreshes status.
+    func checkout(to branch: String) {
+        guard !isBusy else { return }
+        currentTask?.cancel()
+        currentTask = Task { [weak self] in
+            guard let self else { return }
+            activity = .checkingOut
+            defer { activity = .idle }
+            do {
+                try await service.checkout(branch: branch)
+                status = try await service.status()
+                hasStash = (try? await service.hasStash()) ?? false
+                availableBranches = (try? await service.branches()) ?? availableBranches
+                outcome = .success("Switched to \(branch).")
+            } catch {
+                outcome = .failure(describe(error))
+            }
+        }
+    }
+
+    /// Fetch + fast-forward pull. Updates `status` on success.
+    func sync() {
+        guard !isBusy else { return }
+        currentTask?.cancel()
+        currentTask = Task { [weak self] in
+            guard let self else { return }
+            activity = .syncing
+            defer { activity = .idle }
+            do {
+                status = try await service.fetchAndPull()
+                hasStash = (try? await service.hasStash()) ?? false
+                outcome = .success("Synced \(status.branch).")
+            } catch {
+                outcome = .failure(describe(error))
+            }
+        }
+    }
+
+    /// Returns the unified diff string for `path`, or nil for new/untracked files.
+    func diff(path: String) async -> String? {
+        try? await service.diff(path: path)
+    }
+
+    func createBranch(name: String) {
+        guard !isBusy else { return }
+        currentTask?.cancel()
+        currentTask = Task { [weak self] in
+            guard let self else { return }
+            activity = .checkingOut
+            defer { activity = .idle }
+            do {
+                try await service.createBranchAndCheckout(name: name)
+                status = try await service.status()
+                hasStash = (try? await service.hasStash()) ?? false
+                availableBranches = (try? await service.branches()) ?? availableBranches
+                outcome = .success("Created branch \(name).")
+            } catch {
+                outcome = .failure(describe(error))
+            }
+        }
+    }
+
+    func stashChanges() {
+        guard !isBusy else { return }
+        currentTask?.cancel()
+        currentTask = Task { [weak self] in
+            guard let self else { return }
+            activity = .stashing
+            defer { activity = .idle }
+            do {
+                try await service.stashPush()
+                status = try await service.status()
+                hasStash = (try? await service.hasStash()) ?? true
+                outcome = .success("Stashed local changes.")
+            } catch {
+                outcome = .failure(describe(error))
+            }
+        }
+    }
+
+    func stashPop() {
+        guard !isBusy else { return }
+        currentTask?.cancel()
+        currentTask = Task { [weak self] in
+            guard let self else { return }
+            activity = .stashing
+            defer { activity = .idle }
+            do {
+                try await service.stashPop()
+                status = try await service.status()
+                hasStash = (try? await service.hasStash()) ?? false
+                outcome = .success("Applied stash.")
+            } catch {
+                outcome = .failure(describe(error))
+            }
+        }
     }
 
     private func describe(_ error: Error) -> String {

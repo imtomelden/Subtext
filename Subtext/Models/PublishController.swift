@@ -14,6 +14,7 @@ final class PublishController {
     enum Phase: Equatable {
         case idle
         case saving
+        case runningPreBuild
         case building
         case committing
         case pushing
@@ -22,7 +23,7 @@ final class PublishController {
 
         var isBusy: Bool {
             switch self {
-            case .saving, .building, .committing, .pushing: true
+            case .saving, .runningPreBuild, .building, .committing, .pushing: true
             default: false
             }
         }
@@ -31,6 +32,7 @@ final class PublishController {
             switch self {
             case .idle: "Ready"
             case .saving: "Saving edits…"
+            case .runningPreBuild: "Running pre-build hook…"
             case .building: "Running `npm run build`…"
             case .committing: "Committing…"
             case .pushing: "Pushing to origin…"
@@ -94,7 +96,31 @@ final class PublishController {
             return
         }
 
-        // 2. Run the build, streaming output into the log.
+        // 2. Optional pre-build hook (site.json).
+        let script = store.siteSettings.preBuildScript?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if !script.isEmpty {
+            phase = .runningPreBuild
+            append("▸ Pre-build hook…")
+            do {
+                let hookResult = try await buildService.runShellScript(script)
+                for line in hookResult.output.split(separator: "\n", omittingEmptySubsequences: false).map(String.init) where !line.isEmpty {
+                    append(line)
+                }
+                guard hookResult.exitCode == 0 else {
+                    phase = .failed("Pre-build exited \(hookResult.exitCode). Publish aborted — nothing pushed.")
+                    append("⚠︎ Pre-build failed (\(hookResult.exitCode)); not running build.")
+                    return
+                }
+            } catch {
+                let reason = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+                phase = .failed("Pre-build hook failed: \(reason)")
+                append("⚠︎ \(reason)")
+                return
+            }
+            append("✓ Pre-build succeeded.")
+        }
+
+        // 3. Run the build, streaming output into the log.
         phase = .building
         append("▸ Running `npm run build`…")
         let exitCode: Int32
@@ -116,7 +142,7 @@ final class PublishController {
         }
         append("✓ Build succeeded.")
 
-        // 3. Commit + push using a structured await — distinct phases are
+        // 4. Commit + push using a structured await — distinct phases are
         //    surfaced via the `onPhase` callback so the UI strip flips from
         //    "Committing…" to "Pushing…" exactly when the underlying git
         //    activity transitions, not on a 200ms poll boundary.
@@ -132,7 +158,7 @@ final class PublishController {
                 case .pushing:
                     self.phase = .pushing
                     self.append("▸ Pushing to origin…")
-                case .idle, .loading:
+                case .idle, .loading, .syncing, .checkingOut, .stashing:
                     break
                 }
             }

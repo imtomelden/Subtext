@@ -7,6 +7,8 @@ struct SidebarView: View {
     @Environment(DevServerController.self) private var devServer
     @Environment(\.openWindow) private var openWindow
 
+    @State private var dashboardExpanded = false
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             brandHeader
@@ -20,16 +22,35 @@ struct SidebarView: View {
 
             Divider()
                 .padding(.horizontal, 14)
-                .padding(.vertical, 10)
+                .padding(.top, 10)
+                .padding(.bottom, 4)
+
+            // Git & Server dashboard toggle
+            dashboardToggleRow
+                .padding(.horizontal, 10)
+
+            if dashboardExpanded {
+                DevDashboardPanel()
+                    .transition(.asymmetric(
+                        insertion: .opacity.combined(with: .move(edge: .bottom)),
+                        removal: .opacity
+                    ))
+            }
+
+            Divider()
+                .padding(.horizontal, 14)
+                .padding(.vertical, 4)
 
             footerRow
                 .padding(.horizontal, 14)
                 .padding(.bottom, 14)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background {
-            GlassSurface(prominence: .regular, cornerRadius: 0) { Color.clear }
-                .ignoresSafeArea()
+        .background(Tokens.Fill.sidebar)
+        .overlay(alignment: .trailing) {
+            Rectangle()
+                .fill(Tokens.Border.sidebar)
+                .frame(width: 1)
         }
     }
 
@@ -38,20 +59,21 @@ struct SidebarView: View {
     private var brandHeader: some View {
         HStack(spacing: 9) {
             ZStack {
-                RoundedRectangle(cornerRadius: SubtextUI.Radius.small, style: .continuous)
-                    .fill(Tokens.Accent.subtleFill)
-                Image(systemName: "text.append")
-                    .font(.system(size: 13, weight: .semibold))
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    .fill(Color.subtextAccent.opacity(0.10))
+                Text("S")
+                    .font(.system(size: 12, weight: .bold))
                     .foregroundStyle(Color.subtextAccent)
             }
             .frame(width: 26, height: 26)
 
             VStack(alignment: .leading, spacing: 1) {
                 Text("Subtext")
-                    .font(.headline.weight(.semibold))
+                    .font(.system(size: 12.5, weight: .bold))
                     .foregroundStyle(Tokens.Text.primary)
+                    .tracking(-0.2)
                 Text(repoFolderName)
-                    .font(.caption2)
+                    .font(.system(size: 10))
                     .foregroundStyle(Tokens.Text.tertiary)
                     .lineLimit(1)
             }
@@ -80,55 +102,74 @@ struct SidebarView: View {
         .padding(.horizontal, 6)
     }
 
-    // MARK: - Footer
+    // MARK: - Dashboard toggle
 
-    private var footerRow: some View {
-        HStack(spacing: 0) {
-            gitFooterButton
-            devServerFooterButton
-            Spacer(minLength: 0)
-            folderButton
-        }
-    }
-
-    private var gitFooterButton: some View {
+    private var dashboardToggleRow: some View {
         Button {
-            // Git panel is triggered via keyboard shortcut ⌘⇧K — nothing to do on tap here
+            withAnimation(Motion.spring) { dashboardExpanded.toggle() }
         } label: {
-            HStack(spacing: 4) {
+            HStack(spacing: 6) {
+                Image(systemName: dashboardExpanded ? "chevron.down" : "chevron.right")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(.tertiary)
+                    .frame(width: 12)
+
                 Image(systemName: "arrow.triangle.branch")
-                    .font(.system(size: 11, weight: .medium))
-                Text(git.status.branch)
-                    .font(.caption2)
-                    .lineLimit(1)
-                if git.status.ahead > 0 || git.status.behind > 0 {
-                    gitSyncBadge
-                }
-            }
-            .foregroundStyle(Tokens.Text.tertiary)
-            .frame(height: 22)
-        }
-        .buttonStyle(.plain)
-        .help("Git branch — press ⌘⇧K to commit")
-    }
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(gitIndicatorColor)
 
-    private var devServerFooterButton: some View {
-        Button {
-            openWindow(id: "subtext-devserver")
-        } label: {
-            HStack(spacing: 4) {
+                Text(git.status.branch == "-" ? "Git & Server" : git.status.branch)
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(Tokens.Text.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+
+                Spacer()
+
+                // Dirty dot
+                if git.hasLocalChanges {
+                    Circle()
+                        .fill(Color.subtextWarning)
+                        .frame(width: 6, height: 6)
+                }
+
+                // Server dot
                 Circle()
                     .fill(devServer.phase.isRunning ? Tokens.State.success : Tokens.Text.tertiary)
                     .frame(width: 6, height: 6)
-                Image(systemName: "server.rack")
-                    .font(.system(size: 11, weight: .medium))
+                    .animation(Motion.snappy, value: devServer.phase.isRunning)
             }
-            .foregroundStyle(Tokens.Text.tertiary)
-            .frame(height: 22)
+            .padding(.horizontal, 4)
+            .padding(.vertical, 5)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .padding(.leading, 10)
-        .help(devServer.phase.isRunning ? "Dev server running — click to manage" : "Dev server stopped — click to manage")
+        .help(dashboardExpanded ? "Collapse git & server panel" : "Expand git & server panel")
+    }
+
+    // MARK: - Footer
+
+    private var footerRow: some View {
+        HStack(spacing: 6) {
+            // Green dot: lit when dev server running, grey otherwise
+            Circle()
+                .fill(devServer.phase.isRunning ? Color(red: 0.13, green: 0.77, blue: 0.37) : Tokens.Text.tertiary)
+                .frame(width: 7, height: 7)
+                .animation(Motion.snappy, value: devServer.phase.isRunning)
+
+            Text(git.status.branch)
+                .font(.system(size: 10.5, design: .monospaced))
+                .foregroundStyle(Tokens.Text.tertiary)
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            if git.status.ahead > 0 || git.status.behind > 0 {
+                gitSyncBadge
+            }
+
+            folderButton
+        }
     }
 
     private var folderButton: some View {
@@ -144,6 +185,13 @@ struct SidebarView: View {
         .help("Reveal website repo in Finder")
     }
 
+    private var gitIndicatorColor: Color {
+        if case .failure = git.outcome { return Color.subtextDanger }
+        if git.hasLocalChanges { return Color.subtextWarning }
+        if git.status.ahead > 0 { return Color.subtextAccent }
+        return Tokens.Text.tertiary
+    }
+
     // MARK: - Git sync badge
 
     @ViewBuilder
@@ -152,15 +200,15 @@ struct SidebarView: View {
         let behind = git.status.behind
         HStack(spacing: 2) {
             if ahead > 0 {
-                Image(systemName: "arrow.up").font(.system(size: 9))
-                Text("\(ahead)").font(.caption2.monospacedDigit())
+                Text("↑\(ahead)").font(.system(size: 10, design: .monospaced))
+                    .foregroundStyle(Color.subtextAccent)
             }
             if behind > 0 {
-                Image(systemName: "arrow.down").font(.system(size: 9))
-                Text("\(behind)").font(.caption2.monospacedDigit())
+                Text("↓\(behind)").font(.system(size: 10, design: .monospaced))
+                    .foregroundStyle(Color.subtextWarning)
             }
         }
-        .foregroundStyle(ahead > 0 ? Color.subtextAccent : Color.subtextWarning)
+        .foregroundStyle(Tokens.Text.tertiary)
     }
 }
 
@@ -177,22 +225,16 @@ private struct SidebarRow: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 10) {
-                // 2pt selection bar on the leading edge
-                Rectangle()
+            HStack(spacing: 9) {
+                // 2×15pt selection bar on the leading edge
+                RoundedRectangle(cornerRadius: 2, style: .continuous)
                     .fill(isSelected ? Color.subtextAccent : Color.clear)
-                    .frame(width: 2)
-                    .clipShape(Capsule())
-                    .padding(.vertical, 4)
-
-                Image(systemName: tab.systemImage)
-                    .font(.system(size: 14, weight: .medium))
-                    .frame(width: 18)
-                    .foregroundStyle(isSelected ? Color.subtextAccent : Tokens.Text.secondary)
+                    .frame(width: 2, height: 15)
 
                 Text(tab.displayName)
-                    .font(isSelected ? .callout.weight(.medium) : .callout)
+                    .font(.system(size: 12.5, weight: isSelected ? .semibold : .regular))
                     .foregroundStyle(isSelected ? Tokens.Text.primary : Tokens.Text.secondary)
+                    .tracking(-0.12)
                     .lineLimit(1)
 
                 Spacer()
@@ -206,18 +248,13 @@ private struct SidebarRow: View {
 
                 dirtyBadge
             }
-            .padding(.leading, 4)
-            .padding(.trailing, 10)
+            .padding(.horizontal, 9)
             .frame(height: 32)
             .background(
-                RoundedRectangle(cornerRadius: SubtextUI.Radius.medium, style: .continuous)
-                    .fill(
-                        isSelected
-                            ? Tokens.Accent.subtleFill
-                            : (isHovered ? Tokens.Background.elevated : Color.clear)
-                    )
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .fill(isSelected ? Color.subtextAccent.opacity(0.10) : Color.clear)
             )
-            .contentShape(RoundedRectangle(cornerRadius: SubtextUI.Radius.medium, style: .continuous))
+            .contentShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
         }
         .buttonStyle(.plain)
         .onHover { isHovered = $0 }
@@ -234,9 +271,7 @@ private struct SidebarRow: View {
                 .frame(width: 7, height: 7)
                 .accessibilityLabel("1 unsaved change")
         default:
-            Text("\(dirtyCount)")
-                .font(.caption2.weight(.bold).monospacedDigit())
-                .foregroundStyle(.white)
+            NumberRoll(value: dirtyCount, font: .caption2.weight(.bold).monospacedDigit())
                 .padding(.horizontal, 6)
                 .padding(.vertical, 1)
                 .background(Capsule().fill(Color.subtextAccent))

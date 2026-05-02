@@ -4,9 +4,14 @@ import SwiftUI
 /// project list on the left, editor on the right.
 struct ProjectsRootView: View {
     @Environment(CMSStore.self) private var store
+    @Environment(\.narrowLayout) private var narrowLayout
     @State private var activeSheet: ActiveSheet?
 
-    private let listWidth: CGFloat = 320
+    private var listWidth: CGFloat {
+        if narrowLayout.isVeryNarrow { return 232 }
+        if narrowLayout.isNarrow { return 260 }
+        return 280
+    }
 
     var body: some View {
         @Bindable var store = store
@@ -24,14 +29,6 @@ struct ProjectsRootView: View {
                     onAddBlock: { activeSheet = .blockPicker(fileName: fileName) },
                     onShowHistory: { activeSheet = .history(fileName: fileName) }
                 )
-                .slidingPanel(isPresented: store.editingBlockID != nil) {
-                    if let blockID = store.editingBlockID,
-                       let blockBinding = blockBinding(for: blockID, in: binding) {
-                        BlockEditorPanel(block: blockBinding) {
-                            store.editingBlockID = nil
-                        }
-                    }
-                }
                 .onReceive(NotificationCenter.default.publisher(for: .subtextNewItem)) { _ in
                     activeSheet = .blockPicker(fileName: fileName)
                 }
@@ -41,6 +38,17 @@ struct ProjectsRootView: View {
             }
         }
         .animation(.easeOut(duration: 0.20), value: store.selectedProjectFileName)
+        .onChange(of: store.pendingBlockKind) { _, kind in
+            guard let kind, let fileName = store.selectedProjectFileName,
+                  let binding = store.binding(forProject: fileName) else {
+                store.pendingBlockKind = nil
+                return
+            }
+            let block = ProjectBlock.empty(of: kind)
+            binding.wrappedValue.frontmatter.blocks.append(block)
+            store.editingBlockID = block.id
+            store.pendingBlockKind = nil
+        }
         .sheet(item: $activeSheet) { sheet in
             switch sheet {
             case .blockPicker(let fileName):
@@ -97,16 +105,4 @@ struct ProjectsRootView: View {
         }
     }
 
-    private func blockBinding(
-        for id: UUID,
-        in document: Binding<ProjectDocument>
-    ) -> Binding<ProjectBlock>? {
-        guard let idx = document.wrappedValue.frontmatter.blocks.firstIndex(where: { $0.id == id }) else {
-            return nil
-        }
-        return Binding(
-            get: { document.wrappedValue.frontmatter.blocks[idx] },
-            set: { document.wrappedValue.frontmatter.blocks[idx] = $0 }
-        )
-    }
 }

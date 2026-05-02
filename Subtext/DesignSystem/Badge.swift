@@ -65,6 +65,8 @@ struct SubtextBadge: View {
             Text("\(n)")
                 .font(.caption2.weight(.bold).monospacedDigit())
                 .foregroundStyle(.white)
+                .contentTransition(.numericText(countsDown: false))
+                .animation(Motion.snappy, value: n)
                 .padding(.horizontal, 6)
                 .padding(.vertical, 1)
                 .background(Capsule().fill(fillColor))

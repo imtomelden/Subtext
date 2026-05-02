@@ -65,8 +65,7 @@ struct StringListEditor: View {
                             .padding(8)
                             .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 8))
                     } else {
-                        TextField(placeholder, text: binding(for: idx))
-                            .textFieldStyle(.roundedBorder)
+                        SubtextTextField(placeholder, text: binding(for: idx))
                     }
 
                     if showReorderControls {

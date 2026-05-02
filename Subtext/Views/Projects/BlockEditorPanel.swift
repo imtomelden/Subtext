@@ -4,6 +4,8 @@ struct BlockEditorPanel: View {
     @Binding var block: ProjectBlock
     var onClose: () -> Void
 
+    static let modalSize = CGSize(width: 640, height: 600)
+
     var body: some View {
         VStack(spacing: 0) {
             header
@@ -15,6 +17,7 @@ struct BlockEditorPanel: View {
                 .padding(20)
             }
         }
+        .frame(width: Self.modalSize.width, height: Self.modalSize.height)
         .focusable()
         .background(
             GlassSurface(prominence: .regular, cornerRadius: SubtextUI.Radius.xLarge) {
@@ -81,6 +84,8 @@ struct BlockEditorPanel: View {
             TagListBlockEditor()
         case .relatedProjects:
             RelatedProjectsBlockEditor()
+        case .divider:
+            DividerBlockEditor()
         }
     }
 

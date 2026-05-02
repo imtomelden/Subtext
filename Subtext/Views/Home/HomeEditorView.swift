@@ -3,42 +3,32 @@ import SwiftUI
 struct HomeEditorView: View {
     @Environment(CMSStore.self) private var store
     @Environment(\.contentDensity) private var density
-    @State private var showVisualPicker = false
+    @Environment(FocusModeController.self) private var focusMode
     @State private var showHistory = false
     @State private var showSourcePreview = false
     @State private var homeSearchText = ""
     @FocusState private var homeSearchFocused: Bool
 
+    // Phase 4 — inline canvas state
+    @State private var blockSelection = BlockSelection()
+    @State private var slashController = SlashCommandController()
+
     var body: some View {
         @Bindable var store = store
 
         mainCanvas
-            .slidingPanel(isPresented: store.editingSectionID != nil) {
-                if let id = store.editingSectionID, let binding = store.binding(forSection: id) {
-                    SectionEditorPanel(section: binding) {
-                        store.editingSectionID = nil
-                    }
-                }
-            }
-            .slidingPanel(isPresented: store.editingCTAID != nil) {
-                if let id = store.editingCTAID, let binding = store.binding(forCTA: id) {
-                    CTAEditorPanel(cta: binding) {
-                        store.editingCTAID = nil
-                    }
-                }
-            }
-            .sheet(isPresented: $showVisualPicker) {
-                let options = SplashSection.addSectionOptions
-                let items: [PickerItem<SplashSection.AddSectionOption>] = options.map { option in
-                    PickerItem(
-                        id: option.id,
-                        kind: option,
-                        displayName: option.displayName,
-                        systemImage: option.systemImage
-                    )
-                }
-                BlockPicker(title: "Add section", items: items) { option in
+            // Slash command overlay — replaces the old BlockPicker sheet.
+            .subtextModal(
+                item: slashModalItem,
+                style: { _ in .command }
+            ) { _ in
+                SlashCommandMenu(query: $slashController.query) { option in
                     store.addSection(option: option)
+                    // Auto-select the new section for immediate editing.
+                    if let newSection = store.splashContent.sections.last {
+                        blockSelection.select(newSection.id)
+                    }
+                    slashController.dismiss()
                 }
             }
             .sheet(isPresented: $showHistory) {
@@ -50,7 +40,7 @@ struct HomeEditorView: View {
                 }
             }
             .onReceive(NotificationCenter.default.publisher(for: .subtextNewItem)) { _ in
-                showVisualPicker = true
+                slashController.activate()
             }
             .onReceive(NotificationCenter.default.publisher(for: .subtextMoveItemUp)) { _ in
                 moveSelectedItem(by: -1)
@@ -58,25 +48,41 @@ struct HomeEditorView: View {
             .onReceive(NotificationCenter.default.publisher(for: .subtextMoveItemDown)) { _ in
                 moveSelectedItem(by: 1)
             }
+            // Sync store-driven selection (e.g. undo/redo, add-then-auto-select)
+            // into the local BlockSelection so the inline editor opens.
+            .onChange(of: store.editingSectionID) { _, newValue in
+                if let id = newValue, !blockSelection.isEditing(id) {
+                    blockSelection.select(id)
+                }
+            }
+            .onChange(of: store.editingCTAID) { _, newValue in
+                if let id = newValue, !blockSelection.isEditing(id) {
+                    blockSelection.select(id)
+                }
+            }
     }
 
+    // MARK: - Slash modal binding
+
+    private var slashModalItem: Binding<SlashCommandController?> {
+        Binding(
+            get: { slashController.isPresented ? slashController : nil },
+            set: { if $0 == nil { slashController.dismiss() } }
+        )
+    }
+
+    // MARK: - Keyboard reorder
+
     private func moveSelectedItem(by delta: Int) {
-        if let id = store.editingSectionID,
-           let idx = store.splashContent.sections.firstIndex(where: { $0.id == id })
-        {
+        guard let id = blockSelection.editingID else { return }
+        if let idx = store.splashContent.sections.firstIndex(where: { $0.id == id }) {
             let dest = clamp(idx + delta, min: 0, max: store.splashContent.sections.count - 1)
             guard dest != idx else { return }
-            // SwiftUI's `move(fromOffsets:toOffset:)` expects the
-            // insertion index — for a forward move that's `dest + 1`.
-            let destination = delta > 0 ? dest + 1 : dest
-            store.moveSection(from: IndexSet(integer: idx), to: destination)
-        } else if let id = store.editingCTAID,
-                  let idx = store.splashContent.ctas.firstIndex(where: { $0.id == id })
-        {
+            store.moveSection(from: IndexSet(integer: idx), to: delta > 0 ? dest + 1 : dest)
+        } else if let idx = store.splashContent.ctas.firstIndex(where: { $0.id == id }) {
             let dest = clamp(idx + delta, min: 0, max: store.splashContent.ctas.count - 1)
             guard dest != idx else { return }
-            let destination = delta > 0 ? dest + 1 : dest
-            store.moveCTA(from: IndexSet(integer: idx), to: destination)
+            store.moveCTA(from: IndexSet(integer: idx), to: delta > 0 ? dest + 1 : dest)
         }
     }
 
@@ -84,43 +90,52 @@ struct HomeEditorView: View {
         Swift.max(lo, Swift.min(hi, value))
     }
 
+    // MARK: - Main canvas
+
     @ViewBuilder
     private var mainCanvas: some View {
         ScrollViewReader { proxy in
             ScrollView {
                 VStack(alignment: .leading, spacing: density.sectionOuterSpacing) {
                     header
+                        .focusModeChrome()
 
                     homeSearchField
-                        .padding(.horizontal, density.sectionOuterSpacing)
+                        .focusModeChrome()
 
-                    sectionsList
-                        .padding(.horizontal, density.sectionOuterSpacing)
-
-                    ctasList
-                        .padding(.horizontal, density.sectionOuterSpacing)
-                        .padding(.bottom, 80)
+                    BlockCanvasView(
+                        searchText: homeSearchText,
+                        selection: blockSelection,
+                        onActivateSlash: { slashController.activate() }
+                    )
+                    .padding(.horizontal, 40)
+                    .padding(.bottom, 80)
                 }
                 .padding(.top, density.canvasTopPadding)
             }
-            .onChange(of: store.editingSectionID) { _, newValue in
-                if let id = newValue { proxy.scrollTo(id, anchor: .center) }
-            }
-            .onChange(of: store.editingCTAID) { _, newValue in
-                if let id = newValue { proxy.scrollTo(id, anchor: .center) }
+            .onChange(of: blockSelection.editingID) { _, newValue in
+                if let id = newValue {
+                    withAnimation(Motion.spring) {
+                        proxy.scrollTo(id, anchor: .top)
+                    }
+                }
             }
         }
     }
 
+    // MARK: - Header
+
     @ViewBuilder
     private var header: some View {
-        HStack(alignment: .firstTextBaseline) {
-            VStack(alignment: .leading, spacing: 4) {
+        HStack(alignment: .top) {
+            VStack(alignment: .leading, spacing: 5) {
                 Text("Home")
-                    .font(.largeTitle.weight(.semibold))
+                    .font(.system(size: 26, weight: .heavy))
+                    .foregroundStyle(Tokens.Text.primary)
+                    .tracking(-0.78)
                 Text("Editing splash.json — sections render top to bottom on imtomelden.com.")
-                    .font(SubtextUI.Typography.body)
-                    .foregroundStyle(.secondary)
+                    .font(.system(size: 12))
+                    .foregroundStyle(Tokens.Text.tertiary)
                     .opacity(homeSearchFocused ? 0.75 : 1)
             }
             Spacer()
@@ -128,31 +143,37 @@ struct HomeEditorView: View {
                 .opacity(homeSearchFocused ? 0.45 : 1)
                 .allowsHitTesting(!homeSearchFocused)
         }
-        .padding(.horizontal, density.sectionOuterSpacing)
+        .padding(.horizontal, 40)
     }
 
     @ViewBuilder
     private var homeSearchField: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 8) {
             Image(systemName: "magnifyingglass")
-                .foregroundStyle(.secondary)
+                .font(.system(size: 12))
+                .foregroundStyle(Tokens.Text.tertiary)
             TextField("Search sections and CTAs", text: $homeSearchText)
                 .textFieldStyle(.plain)
+                .font(.system(size: 12))
                 .focused($homeSearchFocused)
         }
         .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .background(.quaternary.opacity(0.28), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .stroke(homeSearchFocused ? Color.subtextAccent.opacity(0.4) : Color.white.opacity(0.12), lineWidth: 0.8)
-        }
+        .frame(height: 32)
+        .background(
+            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                .fill(Tokens.Background.sunken)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .stroke(homeSearchFocused ? Tokens.Border.focus : Tokens.Border.default, lineWidth: 1)
+                )
+        )
         .accessibilityLabel("Search sections and CTAs")
+        .padding(.horizontal, 40)
     }
 
     @ViewBuilder
     private var toolbarButtons: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 6) {
             AutosaveIndicator(
                 isDirty: store.isSplashDirty,
                 lastPersistedAt: store.lastDraftPersistedAt
@@ -167,232 +188,40 @@ struct HomeEditorView: View {
                 showSourcePreview = true
             } label: {
                 Image(systemName: "curlybraces")
+                    .font(.system(size: 11.5))
+                    .foregroundStyle(Tokens.Text.tertiary)
+                    .frame(width: 26, height: 26)
             }
+            .buttonStyle(.plain)
             .help("Preview splash.json source")
-            .accessibilityLabel("Preview source")
-            .buttonStyle(.bordered)
 
             Button {
                 showHistory = true
             } label: {
                 Image(systemName: "clock.arrow.circlepath")
+                    .font(.system(size: 11.5))
+                    .foregroundStyle(Tokens.Text.tertiary)
+                    .frame(width: 26, height: 26)
             }
+            .buttonStyle(.plain)
             .help("Version history")
-            .accessibilityLabel("Version history")
-            .buttonStyle(.bordered)
+
+            Rectangle()
+                .fill(Tokens.Border.subtle)
+                .frame(width: 1, height: 14)
+                .padding(.horizontal, 4)
 
             Button {
-                showVisualPicker = true
+                slashController.activate()
             } label: {
                 Label("Add section", systemImage: "plus")
+                    .font(.system(size: 11.5, weight: .medium))
+                    .foregroundStyle(.white)
             }
-            .buttonStyle(.borderedProminent)
-            .tint(Color.subtextAccent)
-        }
-    }
-
-    private var filteredSections: [SplashSection] {
-        let q = homeSearchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        let all = store.splashContent.sections
-        guard !q.isEmpty else { return all }
-        return all.filter { sectionMatchesSearch($0, q: q) }
-    }
-
-    private var filteredCTAs: [SplashCTA] {
-        let q = homeSearchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        let all = store.splashContent.ctas
-        guard !q.isEmpty else { return all }
-        return all.filter { ctaMatchesSearch($0, q: q) }
-    }
-
-    private func sectionMatchesSearch(_ section: SplashSection, q: String) -> Bool {
-        if section.heading.lowercased().contains(q) { return true }
-        if section.id.lowercased().contains(q) { return true }
-        if let sub = section.subtitle, sub.lowercased().contains(q) { return true }
-        if section.previewText.lowercased().contains(q) { return true }
-        if section.visual.kind.displayName.lowercased().contains(q) { return true }
-        return false
-    }
-
-    private func ctaMatchesSearch(_ cta: SplashCTA, q: String) -> Bool {
-        cta.name.lowercased().contains(q)
-            || cta.heading.lowercased().contains(q)
-            || cta.subtitle.lowercased().contains(q)
-            || cta.href.lowercased().contains(q)
-            || cta.id.lowercased().contains(q)
-    }
-
-    private var isHomeSearchActive: Bool {
-        !homeSearchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-    }
-
-    @ViewBuilder
-    private var sectionsList: some View {
-        let sections = filteredSections
-        let total = store.splashContent.sections.count
-
-        VStack(alignment: .leading, spacing: density.listRowSpacing) {
-            HStack(alignment: .firstTextBaseline) {
-                sectionHeading(
-                    title: "Sections",
-                    count: isHomeSearchActive ? sections.count : total,
-                    countSuffix: isHomeSearchActive && total != sections.count ? " of \(total)" : nil
-                )
-                Spacer()
-                if !isHomeSearchActive, sections.count > 1 {
-                    reorderHint
-                }
-            }
-
-            if store.splashContent.sections.isEmpty {
-                emptyState(
-                    title: "No sections yet",
-                    hint: "Add your first home page section using the Add button above."
-                )
-            } else if sections.isEmpty {
-                emptyState(
-                    title: "No sections match your search",
-                    hint: "Try a different term or clear the search field."
-                )
-            } else if isHomeSearchActive {
-                searchActiveReorderHint
-                ForEach(sections) { section in
-                    SectionCardView(
-                        section: section,
-                        reorderControls: nil,
-                        onEdit: { store.editingSectionID = section.id },
-                        onDelete: { store.deleteSection(id: section.id) }
-                    )
-                    .id(section.id)
-                }
-            } else {
-                ReorderableVStack(
-                    items: sections,
-                    spacing: density.listRowSpacing,
-                    onMove: { source, destination in
-                        store.moveSection(from: source, to: destination)
-                    }
-                ) { section, controls in
-                    SectionCardView(
-                        section: section,
-                        reorderControls: controls,
-                        onEdit: { store.editingSectionID = section.id },
-                        onDelete: { store.deleteSection(id: section.id) }
-                    )
-                    .id(section.id)
-                }
-            }
-        }
-    }
-
-    @ViewBuilder
-    private var searchActiveReorderHint: some View {
-        Text("Clear search to reorder sections.")
-            .font(.caption)
-            .foregroundStyle(.tertiary)
-    }
-
-    @ViewBuilder
-    private var ctasList: some View {
-        let ctas = filteredCTAs
-        let totalCTAs = store.splashContent.ctas.count
-
-        VStack(alignment: .leading, spacing: density.listRowSpacing) {
-            HStack(alignment: .firstTextBaseline, spacing: 10) {
-                sectionHeading(
-                    title: "Call-to-action cards",
-                    count: isHomeSearchActive ? ctas.count : totalCTAs,
-                    countSuffix: isHomeSearchActive && totalCTAs != ctas.count ? " of \(totalCTAs)" : nil
-                )
-                if !isHomeSearchActive, ctas.count > 1 {
-                    reorderHint
-                }
-                Spacer()
-                Button {
-                    store.addCTA()
-                } label: {
-                    Label("Add CTA", systemImage: "plus")
-                }
-                .buttonStyle(.bordered)
-                .tint(Color.subtextAccent)
-            }
-
-            if store.splashContent.ctas.isEmpty {
-                emptyState(title: "No CTAs yet", hint: "CTAs are the two prominent buttons after the sections list.")
-            } else if ctas.isEmpty {
-                emptyState(
-                    title: "No CTAs match your search",
-                    hint: "Try a different term or clear the search field."
-                )
-            } else if isHomeSearchActive {
-                Text("Clear search to reorder CTAs.")
-                    .font(.caption)
-                    .foregroundStyle(.tertiary)
-                ForEach(ctas) { cta in
-                    CTACardView(
-                        cta: cta,
-                        reorderControls: nil,
-                        onEdit: { store.editingCTAID = cta.id },
-                        onDelete: { store.deleteCTA(id: cta.id) }
-                    )
-                    .id(cta.id)
-                }
-            } else {
-                ReorderableVStack(
-                    items: ctas,
-                    spacing: density.listRowSpacing,
-                    onMove: { source, destination in
-                        store.moveCTA(from: source, to: destination)
-                    }
-                ) { cta, controls in
-                    CTACardView(
-                        cta: cta,
-                        reorderControls: controls,
-                        onEdit: { store.editingCTAID = cta.id },
-                        onDelete: { store.deleteCTA(id: cta.id) }
-                    )
-                    .id(cta.id)
-                }
-            }
-        }
-    }
-
-    @ViewBuilder
-    private var reorderHint: some View {
-        Label("Use chevrons or ⌘↑/⌘↓ to reorder", systemImage: "chevron.up.chevron.down")
-            .labelStyle(.titleAndIcon)
-            .font(.caption)
-            .foregroundStyle(.tertiary)
-    }
-
-    @ViewBuilder
-    private func sectionHeading(title: String, count: Int, countSuffix: String? = nil) -> some View {
-        HStack(spacing: 8) {
-            Text(title)
-                .font(.title3.weight(.semibold))
-            HStack(spacing: 0) {
-                Text("\(count)")
-                if let countSuffix {
-                    Text(countSuffix)
-                }
-            }
-            .font(.caption.weight(.medium))
-            .foregroundStyle(.secondary)
-            .padding(.horizontal, 7)
-            .padding(.vertical, 2)
-            .background(.quaternary.opacity(0.4), in: Capsule())
-        }
-    }
-
-    @ViewBuilder
-    private func emptyState(title: String, hint: String) -> some View {
-        GlassSurface(prominence: .interactive, cornerRadius: 12) {
-            VStack(spacing: 6) {
-                Text(title).font(SubtextUI.Typography.bodyStrong)
-                Text(hint).font(SubtextUI.Typography.caption).foregroundStyle(.secondary)
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 28)
+            .padding(.horizontal, 12)
+            .frame(height: 27)
+            .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(Color.subtextAccent))
+            .buttonStyle(.plain)
         }
     }
 }

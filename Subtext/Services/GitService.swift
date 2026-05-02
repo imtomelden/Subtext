@@ -151,6 +151,31 @@ actor GitService {
         return try await status()
     }
 
+    /// Unstages everything, then stages only `paths` (repo-relative), and commits.
+    @discardableResult
+    func commit(message: String, stagingPaths paths: [String]) async throws -> Status {
+        try ensureRepo()
+        let trimmed = message.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            throw GitError.commandFailed(command: "commit", exitCode: 1, stderr: "Commit message cannot be empty.")
+        }
+        let unique = Array(Set(paths)).sorted()
+        guard !unique.isEmpty else {
+            throw GitError.commandFailed(command: "commit", exitCode: 1, stderr: "No files selected to commit.")
+        }
+
+        try await run(["reset", "HEAD"])
+        for path in unique {
+            try await run(["add", "--", path])
+        }
+        let staged = try await status().entries.filter(\.isStaged)
+        guard !staged.isEmpty else {
+            throw GitError.commandFailed(command: "commit", exitCode: 1, stderr: "Nothing was staged — check your file selection.")
+        }
+        try await run(["commit", "-m", trimmed])
+        return try await status()
+    }
+
     /// Pushes the current branch to its upstream. Auto-sets upstream on
     /// first push.
     @discardableResult
@@ -181,6 +206,72 @@ actor GitService {
     func commitAndPush(message: String) async throws -> Status {
         _ = try await commitAll(message: message)
         return try await push()
+    }
+
+    /// Returns all local branch names, current branch first.
+    func branches() async throws -> [String] {
+        try ensureRepo()
+        let raw = try await run(["branch", "--list", "--format=%(refname:short)"])
+        let all = raw.components(separatedBy: .newlines)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+        let current = (try? await status().branch) ?? ""
+        return ([current] + all.filter { $0 != current }).filter { !$0.isEmpty }
+    }
+
+    /// Checks out `branch`. Throws if there are conflicts or the branch doesn't exist.
+    func checkout(branch: String) async throws {
+        try ensureRepo()
+        try await run(["checkout", branch])
+    }
+
+    /// Creates and checks out a new branch from the current HEAD.
+    func createBranchAndCheckout(name: String) async throws {
+        try ensureRepo()
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            throw GitError.commandFailed(command: "checkout -b", exitCode: 1, stderr: "Branch name cannot be empty.")
+        }
+        try await run(["checkout", "-b", trimmed])
+    }
+
+    func hasStash() async throws -> Bool {
+        try ensureRepo()
+        let out = try await run(["stash", "list"])
+        return !out.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    func stashPush() async throws {
+        try ensureRepo()
+        try await run(["stash", "push", "-u", "-m", "Subtext"])
+    }
+
+    func stashPop() async throws {
+        try ensureRepo()
+        try await run(["stash", "pop"])
+    }
+
+    /// Returns the unified diff for `path`. Tries staged diff, then HEAD diff.
+    /// Returns nil for untracked (new) files with no prior content.
+    func diff(path: String) async throws -> String? {
+        try ensureRepo()
+        // Staged (index vs HEAD) first — catches `git add`-ed files.
+        let staged = (try? await run(["diff", "--cached", "--", path])) ?? ""
+        if !staged.isEmpty { return staged }
+        // Working tree vs HEAD.
+        let working = (try? await run(["diff", "HEAD", "--", path])) ?? ""
+        if !working.isEmpty { return working }
+        return nil   // untracked — caller can show "new file" placeholder
+    }
+
+    /// Fetches from origin then fast-forwards the current branch.
+    /// Fails cleanly (throws) rather than creating a merge commit.
+    @discardableResult
+    func fetchAndPull() async throws -> Status {
+        try ensureRepo()
+        try await run(["fetch", "--quiet"], timeoutSeconds: gitPushTimeoutSeconds, useBatchModeSSH: true)
+        _ = try? await run(["pull", "--ff-only", "--quiet"])
+        return try await status()
     }
 
     // MARK: - Internals

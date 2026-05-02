@@ -461,6 +461,9 @@ enum MDXParser {
         case "relatedProjects":
             return .relatedProjects(RelatedProjectsBlock())
 
+        case "divider":
+            return .divider(DividerBlock())
+
         case "quote":
             return .quote(QuoteBlock(
                 quote: map["quote"]?.stringValue ?? "",

@@ -1,6 +1,27 @@
 import SwiftUI
 import AppKit
 
+// MARK: - Loading state
+
+private enum SubtextButtonLoadingKey: EnvironmentKey {
+    static let defaultValue: Bool = false
+}
+
+extension EnvironmentValues {
+    /// When true, `SubtextButtonStyle` shows a compact indeterminate progress view instead of the label.
+    var subtextButtonIsLoading: Bool {
+        get { self[SubtextButtonLoadingKey.self] }
+        set { self[SubtextButtonLoadingKey.self] = newValue }
+    }
+}
+
+extension View {
+    /// Replaces the label with a spinner and ignores presses while `isLoading` is true.
+    func subtextButtonLoading(_ isLoading: Bool) -> some View {
+        environment(\.subtextButtonIsLoading, isLoading)
+    }
+}
+
 enum SubtextButtonVariant {
     /// Accent fill, white text — primary call-to-action.
     case primary
@@ -24,12 +45,23 @@ struct SubtextButtonStyle: ButtonStyle {
     private struct InnerBody: View {
         let configuration: ButtonStyleConfiguration
         let variant: SubtextButtonVariant
+        @Environment(\.subtextButtonIsLoading) private var isLoading
         @State private var isHovered = false
 
         var body: some View {
-            styled(configuration.label)
-                .opacity(configuration.isPressed ? 0.80 : 1)
-                .animation(UXMotion.instant, value: configuration.isPressed)
+            Group {
+                if isLoading {
+                    ProgressView()
+                        .controlSize(variant == .primary || variant == .destructive ? .regular : .small)
+                        .frame(minWidth: loadingMinWidth, minHeight: loadingMinHeight)
+                } else {
+                    styled(configuration.label)
+                }
+            }
+                .scaleEffect(configuration.isPressed ? pressScale : (isHovered ? hoverScale : 1.0))
+                .opacity(configuration.isPressed ? 0.88 : 1)
+                .pressRipple(isPressed: configuration.isPressed && usesRipple && !isLoading)
+                .animation(Motion.snappy, value: configuration.isPressed)
                 .onHover { hovering in
                     isHovered = hovering
                     if variant == .icon {
@@ -37,7 +69,46 @@ struct SubtextButtonStyle: ButtonStyle {
                         else { NSCursor.pop() }
                     }
                 }
-                .animation(UXMotion.instant, value: isHovered)
+                .animation(Motion.snappy, value: isHovered)
+                .allowsHitTesting(!isLoading)
+        }
+
+        private var loadingMinWidth: CGFloat {
+            switch variant {
+            case .primary, .secondary, .destructive: 72
+            case .ghost: 60
+            case .icon: 28
+            }
+        }
+
+        private var loadingMinHeight: CGFloat {
+            switch variant {
+            case .icon: 28
+            default: 22
+            }
+        }
+
+        private var pressScale: CGFloat {
+            switch variant {
+            case .primary, .secondary, .destructive: 0.97
+            case .ghost: 0.98
+            case .icon: 0.88
+            }
+        }
+
+        private var hoverScale: CGFloat {
+            switch variant {
+            case .primary, .secondary, .destructive: 1.01
+            case .ghost: 1.0
+            case .icon: 1.10
+            }
+        }
+
+        private var usesRipple: Bool {
+            switch variant {
+            case .primary, .secondary: true
+            default: false
+            }
         }
 
         @ViewBuilder
@@ -51,7 +122,7 @@ struct SubtextButtonStyle: ButtonStyle {
                     .padding(.vertical, 7)
                     .background(
                         RoundedRectangle(cornerRadius: SubtextUI.Radius.small, style: .continuous)
-                            .fill(isHovered ? Color.subtextAccent.opacity(0.88) : Color.subtextAccent)
+                            .fill(isHovered ? Color.accentColor.opacity(0.88) : Color.accentColor)
                     )
 
             case .secondary:
@@ -72,7 +143,7 @@ struct SubtextButtonStyle: ButtonStyle {
             case .ghost:
                 label
                     .font(.callout)
-                    .foregroundStyle(isHovered ? Color.subtextAccent : Tokens.Text.secondary)
+                    .foregroundStyle(isHovered ? Color.accentColor : Tokens.Text.secondary)
                     .padding(.horizontal, 14)
                     .padding(.vertical, 7)
 
@@ -94,7 +165,7 @@ struct SubtextButtonStyle: ButtonStyle {
             case .icon:
                 label
                     .font(.system(size: 14, weight: .medium))
-                    .foregroundStyle(isHovered ? Color.subtextAccent : Tokens.Text.secondary)
+                    .foregroundStyle(isHovered ? Color.accentColor : Tokens.Text.secondary)
                     .frame(width: 28, height: 28)
                     .contentShape(Rectangle())
             }
@@ -119,7 +190,7 @@ struct IconButton: View {
     var body: some View {
         Button(action: action) {
             Image(systemName: icon)
-                .foregroundStyle(isActive ? Color.subtextAccent : Tokens.Text.secondary)
+                .foregroundStyle(isActive ? Color.accentColor : Tokens.Text.secondary)
         }
         .subtextButton(.icon)
         .help(tooltip)

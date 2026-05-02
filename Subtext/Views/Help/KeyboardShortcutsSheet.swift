@@ -2,7 +2,7 @@ import SwiftUI
 
 /// In-app mirror of the command surface in `SubtextApp` / `ContentView`.
 struct KeyboardShortcutsSheet: View {
-    @Environment(\.dismiss) private var dismiss
+    @Environment(\.dismissModal) private var dismiss
 
     private let rows: [(String, String)] = [
         ("Save", "⌘S"),
@@ -15,10 +15,13 @@ struct KeyboardShortcutsSheet: View {
         ("Cycle project editor mode", "⌥⌘\\"),
         ("Go to…", "⌘K"),
         ("Find in content…", "⌘F"),
+        ("Find and replace in project body…", "⌥⌘F"),
         ("Move selection up", "⌃⌥↑"),
         ("Move selection down", "⌃⌥↓"),
         ("Show live preview", "⌥⌘P"),
         ("Toggle focus mode", "⌃⌘F"),
+        ("Cycle focus level", "⇧⌘↩"),
+        ("Build & publish", "⇧⌘B"),
         ("Commit & push…", "⇧⌘K"),
         ("Refresh git status", "⇧⌘R"),
         ("Retry (when load failed)", "⌘R"),

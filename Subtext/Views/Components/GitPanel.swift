@@ -104,6 +104,8 @@ struct GitPanel: View {
     @Environment(\.dismiss) private var dismiss
     @State private var message: String = ""
     @State private var showPublishLog: Bool = false
+    @State private var commitFileSelection: Set<String> = []
+    @State private var gitDiffPath: String?
     @FocusState private var messageFocused: Bool
 
     var body: some View {
@@ -132,7 +134,11 @@ struct GitPanel: View {
         .frame(minWidth: 640, minHeight: 560)
         .onAppear {
             git.refresh()
+            syncCommitFileSelection()
             messageFocused = true
+        }
+        .onChange(of: git.status.entries) { _, _ in
+            syncCommitFileSelection()
         }
         .sheet(isPresented: $showPublishLog) {
             PublishLogSheet()
@@ -257,6 +263,10 @@ struct GitPanel: View {
                     }
                 }
 
+                if !git.status.isClean {
+                    stageSelectionToolbar
+                }
+
                 fileList
             }
             .frame(maxWidth: .infinity, alignment: .topLeading)
@@ -288,16 +298,39 @@ struct GitPanel: View {
                     LazyVStack(alignment: .leading, spacing: 4) {
                         ForEach(git.status.entries) { entry in
                             HStack(spacing: 8) {
+                                Toggle(
+                                    "",
+                                    isOn: Binding(
+                                        get: { commitFileSelection.contains(entry.path) },
+                                        set: { on in
+                                            if on { commitFileSelection.insert(entry.path) }
+                                            else { commitFileSelection.remove(entry.path) }
+                                        }
+                                    )
+                                )
+                                .toggleStyle(.checkbox)
+                                .labelsHidden()
+                                .help("Include in next commit")
+
                                 Text(String(entry.indexCode) + String(entry.worktreeCode))
                                     .font(.caption.monospaced().weight(.semibold))
                                     .foregroundStyle(tint(for: entry))
                                     .frame(width: 26, alignment: .leading)
-                                Text(entry.path)
-                                    .font(.caption.monospaced())
-                                    .lineLimit(1)
-                                    .truncationMode(.middle)
-                                    .help(entry.path)
-                                Spacer(minLength: 6)
+
+                                Button {
+                                    gitDiffPath = entry.path
+                                } label: {
+                                    Text(entry.path)
+                                        .font(.caption.monospaced())
+                                        .lineLimit(1)
+                                        .truncationMode(.middle)
+                                        .multilineTextAlignment(.leading)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                }
+                                .buttonStyle(.plain)
+                                .foregroundStyle(.primary)
+                                .help(entry.path)
+
                                 Text(label(for: entry))
                                     .font(.caption2.weight(.medium))
                                     .foregroundStyle(.secondary)
@@ -308,6 +341,12 @@ struct GitPanel: View {
                                 RoundedRectangle(cornerRadius: 6, style: .continuous)
                                     .fill(tint(for: entry).opacity(0.10))
                             )
+                            .popover(isPresented: Binding(
+                                get: { gitDiffPath == entry.path },
+                                set: { if !$0 { gitDiffPath = nil } }
+                            ), arrowEdge: .trailing) {
+                                InlineDiffView(path: entry.path)
+                            }
                         }
                     }
                     .padding(.vertical, 2)
@@ -411,8 +450,9 @@ struct GitPanel: View {
             } label: {
                 Label("Push", systemImage: "arrow.up.circle")
             }
-            .buttonStyle(.bordered)
-            .disabled(!canPushOnly)
+            .subtextButton(.secondary)
+            .subtextButtonLoading(git.activity == .pushing)
+            .disabled(!canPushOnly || git.isBusy)
             .help(pushOnlyHelp)
 
             Button {
@@ -421,28 +461,76 @@ struct GitPanel: View {
             } label: {
                 Label(buildAndPublishLabel, systemImage: "hammer")
             }
-            .buttonStyle(.bordered)
-            .disabled(!canPublish)
-            .help("Run `npm run build`, then commit & push if it succeeds (⌘⇧↩)")
-            .keyboardShortcut(.return, modifiers: [.command, .shift])
+            .subtextButton(.secondary)
+            .subtextButtonLoading(publish.isBusy)
+            .disabled(!canPublish || git.isBusy)
+            .help("Run `npm run build`, then commit & push if it succeeds (⌘⇧B)")
+            .keyboardShortcut("b", modifiers: [.command, .shift])
 
             Button {
                 let text = message
                 if git.status.isClean {
                     git.push()
                 } else {
-                    git.commitAndPush(message: text)
+                    git.commitAndPush(message: text, stagingPaths: commitStagingPathsOrNil)
                     message = ""
                 }
             } label: {
                 Label(primaryButtonLabel, systemImage: "arrow.up")
             }
-            .buttonStyle(.borderedProminent)
+            .subtextButton(.primary)
             .tint(Color.subtextAccent)
+            .subtextButtonLoading(git.activity == .committing || git.activity == .pushing)
             .keyboardShortcut(.return, modifiers: [.command])
-            .disabled(!canPrimary)
+            .disabled(!canPrimary || git.isBusy)
             .help(primaryHelp)
         }
+    }
+
+    private var stageSelectionToolbar: some View {
+        HStack(spacing: 12) {
+            Text("Staging")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+            Button("Stage all") {
+                commitFileSelection = Set(git.status.entries.map(\.path))
+            }
+            .buttonStyle(.borderless)
+            .foregroundStyle(Color.subtextAccent)
+            .disabled(git.status.isClean)
+            Button("Stage none") {
+                commitFileSelection.removeAll()
+            }
+            .buttonStyle(.borderless)
+            .foregroundStyle(.secondary)
+            .disabled(git.status.isClean)
+            Spacer()
+            if commitFileSelection.isEmpty {
+                Text("Select at least one file to commit")
+                    .font(.caption2)
+                    .foregroundStyle(Color.subtextWarning)
+            }
+        }
+    }
+
+    private func syncCommitFileSelection() {
+        let all = Set(git.status.entries.map(\.path))
+        if commitFileSelection.isEmpty, !all.isEmpty {
+            commitFileSelection = all
+            return
+        }
+        let stillThere = commitFileSelection.intersection(all)
+        let added = all.subtracting(commitFileSelection)
+        commitFileSelection = stillThere.union(added)
+    }
+
+    /// When every file is selected, pass `nil` so the service uses the fast `git add -A` path.
+    private var commitStagingPathsOrNil: Set<String>? {
+        let all = Set(git.status.entries.map(\.path))
+        guard !all.isEmpty, commitFileSelection == all else {
+            return commitFileSelection
+        }
+        return nil
     }
 
     private var canPublish: Bool {
@@ -458,6 +546,7 @@ struct GitPanel: View {
     private var buildAndPublishLabel: String {
         switch publish.phase {
         case .saving: return "Saving…"
+        case .runningPreBuild: return "Pre-build…"
         case .building: return "Building…"
         case .committing: return "Committing…"
         case .pushing: return "Pushing…"
@@ -486,7 +575,8 @@ struct GitPanel: View {
         if git.status.isClean {
             return git.status.ahead > 0 // allow push-only
         }
-        return !message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        let msgOk = !message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        return msgOk && !commitFileSelection.isEmpty
     }
 
     private var primaryButtonLabel: String {
@@ -494,6 +584,9 @@ struct GitPanel: View {
         case .committing: return "Committing…"
         case .pushing: return "Pushing…"
         case .loading: return "Refreshing…"
+        case .syncing: return "Syncing…"
+        case .checkingOut: return "Checking out…"
+        case .stashing: return "Stashing…"
         case .idle:
             if git.status.isClean {
                 return git.status.ahead > 0 ? "Push (\(git.status.ahead))" : "Nothing to do"
@@ -506,7 +599,7 @@ struct GitPanel: View {
         if git.status.isClean {
             return git.status.ahead > 0 ? "Push \(git.status.ahead) commit(s) to origin" : "No changes to commit, nothing to push"
         }
-        return "Stage all changes, commit with this message, then push (⌘↩)"
+        return "Stage selected changes, commit with this message, then push (⌘↩)"
     }
 
     @ViewBuilder

@@ -19,6 +19,7 @@ enum ProjectBlock: Equatable, Sendable, Identifiable {
     case externalLink(ExternalLinkBlock)
     case tagList(TagListBlock)
     case relatedProjects(RelatedProjectsBlock)
+    case divider(DividerBlock)
 
     var id: UUID {
         switch self {
@@ -38,6 +39,7 @@ enum ProjectBlock: Equatable, Sendable, Identifiable {
         case .externalLink(let b): b.id
         case .tagList(let b): b.id
         case .relatedProjects(let b): b.id
+        case .divider(let b): b.id
         }
     }
 
@@ -68,6 +70,7 @@ enum ProjectBlock: Equatable, Sendable, Identifiable {
         case externalLink
         case tagList
         case relatedProjects
+        case divider
 
         var id: String { rawValue }
 
@@ -89,6 +92,7 @@ enum ProjectBlock: Equatable, Sendable, Identifiable {
             case .externalLink: "External link"
             case .tagList: "Tag list"
             case .relatedProjects: "Related projects"
+            case .divider: "Divider"
             }
         }
 
@@ -110,6 +114,7 @@ enum ProjectBlock: Equatable, Sendable, Identifiable {
             case .externalLink: "link"
             case .tagList: "tag"
             case .relatedProjects: "rectangle.grid.1x2"
+            case .divider: "minus"
             }
         }
 
@@ -132,6 +137,42 @@ enum ProjectBlock: Equatable, Sendable, Identifiable {
             case .externalLink: (0.45, 0.78, 0.55)
             case .tagList: (0.65, 0.70, 0.85)
             case .relatedProjects: (0.85, 0.50, 0.55)
+            case .divider: (0.55, 0.55, 0.60)
+            }
+        }
+
+        /// Short ALL-CAPS pill label used in the new flat row design.
+        var shortPillName: String {
+            switch self {
+            case .videoShowcase:    "VIDEO"
+            case .keyStats:         "STATS"
+            case .body:             "BODY"
+            case .tagList:          "TAGS"
+            case .relatedProjects:  "RELATED"
+            case .projectSnapshot:  "SNAPSHOT"
+            case .mediaGallery:     "GALLERY"
+            case .cta:              "CTA"
+            case .pageHero:         "HERO"
+            case .headerImage:      "HEADER"
+            case .quote:            "QUOTE"
+            case .preface:          "PREFACE"
+            case .caseStudy:        "CASE STUDY"
+            case .videoDetails:     "VIDEO META"
+            case .externalLink:     "LINK"
+            case .goalsMetrics:     "GOALS"
+            case .divider:          "DIVIDER"
+            }
+        }
+
+        /// Hex colour string for the flat pill design (matches handoff spec for key types).
+        var pillColor: (r: Double, g: Double, b: Double) {
+            switch self {
+            case .videoShowcase:    (0.545, 0.361, 0.965)  // #8B5CF6
+            case .keyStats:         (0.055, 0.647, 0.914)  // #0EA5E9
+            case .body:             (0.063, 0.725, 0.506)  // #10B981
+            case .tagList:          (0.961, 0.620, 0.043)  // #F59E0B
+            case .relatedProjects:  (0.388, 0.400, 0.945)  // #6366F1
+            default:                tintRGB
             }
         }
     }
@@ -154,6 +195,7 @@ enum ProjectBlock: Equatable, Sendable, Identifiable {
         case .externalLink: .externalLink
         case .tagList: .tagList
         case .relatedProjects: .relatedProjects
+        case .divider: .divider
         }
     }
 
@@ -202,6 +244,8 @@ enum ProjectBlock: Equatable, Sendable, Identifiable {
             return "Project tags"
         case .relatedProjects:
             return "Related projects (auto)"
+        case .divider:
+            return "Section divider"
         }
     }
 
@@ -280,6 +324,7 @@ enum ProjectBlock: Equatable, Sendable, Identifiable {
         case .externalLink: .externalLink(ExternalLinkBlock(href: "", label: nil))
         case .tagList: .tagList(TagListBlock())
         case .relatedProjects: .relatedProjects(RelatedProjectsBlock())
+        case .divider: .divider(DividerBlock())
         }
     }
 }
@@ -342,6 +387,10 @@ struct TagListBlock: Equatable, Sendable {
 }
 
 struct RelatedProjectsBlock: Equatable, Sendable {
+    var id: UUID = UUID()
+}
+
+struct DividerBlock: Equatable, Sendable {
     var id: UUID = UUID()
 }
 
@@ -517,6 +566,7 @@ extension ProjectBlock {
         case (.externalLink(let l), .externalLink(let r)): l == r
         case (.tagList(let l), .tagList(let r)): l == r
         case (.relatedProjects(let l), .relatedProjects(let r)): l == r
+        case (.divider(let l), .divider(let r)): l == r
         default: false
         }
     }
@@ -573,6 +623,10 @@ extension ExternalLinkBlock {
 
 extension TagListBlock {
     static func == (lhs: TagListBlock, rhs: TagListBlock) -> Bool { true }
+}
+
+extension DividerBlock {
+    static func == (lhs: DividerBlock, rhs: DividerBlock) -> Bool { true }
 }
 
 extension RelatedProjectsBlock {
@@ -720,5 +774,31 @@ extension CTABlock {
         lhs.title == rhs.title
             && lhs.description == rhs.description
             && lhs.links == rhs.links
+    }
+}
+
+// MARK: - Duplication
+
+extension ProjectBlock {
+    func duplicated() -> ProjectBlock {
+        switch self {
+        case .projectSnapshot(var v): v.id = UUID(); return .projectSnapshot(v)
+        case .keyStats(var v):        v.id = UUID(); return .keyStats(v)
+        case .goalsMetrics(var v):    v.id = UUID(); return .goalsMetrics(v)
+        case .quote(var v):           v.id = UUID(); return .quote(v)
+        case .mediaGallery(var v):    v.id = UUID(); return .mediaGallery(v)
+        case .videoShowcase(var v):   v.id = UUID(); return .videoShowcase(v)
+        case .cta(var v):             v.id = UUID(); return .cta(v)
+        case .body(var v):            v.id = UUID(); return .body(v)
+        case .pageHero(var v):        v.id = UUID(); return .pageHero(v)
+        case .headerImage(var v):     v.id = UUID(); return .headerImage(v)
+        case .preface(var v):         v.id = UUID(); return .preface(v)
+        case .caseStudy(var v):       v.id = UUID(); return .caseStudy(v)
+        case .videoDetails(var v):    v.id = UUID(); return .videoDetails(v)
+        case .externalLink(var v):    v.id = UUID(); return .externalLink(v)
+        case .tagList(var v):         v.id = UUID(); return .tagList(v)
+        case .relatedProjects(var v): v.id = UUID(); return .relatedProjects(v)
+        case .divider(var v):         v.id = UUID(); return .divider(v)
+        }
     }
 }

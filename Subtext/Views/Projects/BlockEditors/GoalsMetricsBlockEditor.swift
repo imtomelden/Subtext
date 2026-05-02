@@ -2,6 +2,9 @@ import SwiftUI
 
 struct GoalsMetricsBlockEditor: View {
     @Binding var block: GoalsMetricsBlock
+    @State private var goalsDrag = DragReorderState(spacing: 10)
+
+    private let itemStackSpacing: CGFloat = 10
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -10,31 +13,14 @@ struct GoalsMetricsBlockEditor: View {
                     .textFieldStyle(.roundedBorder)
             }
 
-            VStack(alignment: .leading, spacing: 10) {
-                ForEach(block.items.indices, id: \.self) { idx in
-                    HStack(alignment: .top, spacing: 8) {
-                        VStack(alignment: .leading, spacing: 8) {
-                            TextField("Goal", text: goal(at: idx))
-                                .textFieldStyle(.roundedBorder)
-                            TextField("Success measure", text: successMeasure(at: idx))
-                                .textFieldStyle(.roundedBorder)
-                            TextField("Baseline", text: baseline(at: idx))
-                                .textFieldStyle(.roundedBorder)
-                            TextField("Target", text: target(at: idx))
-                                .textFieldStyle(.roundedBorder)
-                            TextField("Reporting cadence", text: cadence(at: idx))
-                                .textFieldStyle(.roundedBorder)
-                        }
-                        Button(role: .destructive) {
-                            block.items.remove(at: idx)
-                        } label: {
-                            Image(systemName: "minus.circle.fill")
-                        }
-                        .buttonStyle(.plain)
-                        .foregroundStyle(.secondary)
-                    }
-                    .padding(10)
-                    .background(SubtextUI.Surface.subtleFill, in: RoundedRectangle(cornerRadius: SubtextUI.Radius.small))
+            VStack(alignment: .leading, spacing: itemStackSpacing) {
+                ReorderableVStack(
+                    items: block.items,
+                    spacing: itemStackSpacing,
+                    dragState: block.items.count > 1 ? goalsDrag : nil,
+                    onMove: { block.items.move(fromOffsets: $0, toOffset: $1) }
+                ) { item, controls in
+                    goalRow(itemID: item.id, controls: controls)
                 }
 
                 Button {
@@ -45,6 +31,38 @@ struct GoalsMetricsBlockEditor: View {
                 .buttonStyle(.borderless)
                 .foregroundStyle(Color.subtextAccent)
             }
+        }
+    }
+
+    @ViewBuilder
+    private func goalRow(itemID: GoalsMetricsBlock.Item.ID, controls: AnyView) -> some View {
+        if let idx = block.items.firstIndex(where: { $0.id == itemID }) {
+            HStack(alignment: .top, spacing: 8) {
+                controls
+
+                VStack(alignment: .leading, spacing: 8) {
+                    TextField("Goal", text: goal(at: idx))
+                        .textFieldStyle(.roundedBorder)
+                    TextField("Success measure", text: successMeasure(at: idx))
+                        .textFieldStyle(.roundedBorder)
+                    TextField("Baseline", text: baseline(at: idx))
+                        .textFieldStyle(.roundedBorder)
+                    TextField("Target", text: target(at: idx))
+                        .textFieldStyle(.roundedBorder)
+                    TextField("Reporting cadence", text: cadence(at: idx))
+                        .textFieldStyle(.roundedBorder)
+                }
+
+                Button(role: .destructive) {
+                    block.items.remove(at: idx)
+                } label: {
+                    Image(systemName: "minus.circle.fill")
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
+            }
+            .padding(10)
+            .background(SubtextUI.Surface.subtleFill, in: RoundedRectangle(cornerRadius: SubtextUI.Radius.small))
         }
     }
 

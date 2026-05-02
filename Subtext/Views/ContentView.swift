@@ -16,17 +16,19 @@ struct ContentView: View {
     @State private var lastPaletteModalMode: CommandPalette.Mode?
     @State private var columnVisibility: NavigationSplitViewVisibility = .automatic
     @State private var repoSelectionError: String?
+    @Environment(FocusModeController.self) private var focusMode
+    @Environment(RecentsStore.self) private var recents
+    @State private var detailWidth: CGFloat?
 
     var body: some View {
         @Bindable var store = store
 
-        Group {
+        ZStack(alignment: .topLeading) {
             if case .awaitingRepoSelection = store.loadState {
                 RepoOnboardingView()
                     .frame(minWidth: 700)
                     .background {
-                        GlassSurface(prominence: .regular, cornerRadius: 0) { Color.clear }
-                            .ignoresSafeArea()
+                        Tokens.Background.canvas.ignoresSafeArea()
                     }
             } else {
                 NavigationSplitView(columnVisibility: $columnVisibility) {
@@ -59,14 +61,17 @@ struct ContentView: View {
                     }
                     .frame(minWidth: 700)
                     .background {
-                        GlassSurface(prominence: .regular, cornerRadius: 0) { Color.clear }
-                            .ignoresSafeArea()
+                        Tokens.Background.canvas.ignoresSafeArea()
+                    }
+                    .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width in
+                        detailWidth = width
                     }
                 }
                 .navigationSplitViewStyle(.balanced)
             }
         }
         .environment(\.contentDensity, useCompactDensity ? .compact : .comfortable)
+        .environment(\.narrowLayout, detailWidth.map(NarrowLayout.from(width:)) ?? .normal)
         .preferredColorScheme(appAppearanceMode.colorScheme)
         .onReceive(NotificationCenter.default.publisher(for: .subtextSave)) { _ in
             Task { await store.saveCurrent(for: tab) }
@@ -87,7 +92,20 @@ struct ContentView: View {
             store.recordUXMetric("palette.open.requested", started: started, metadata: mode.rawValue)
         }
         .onReceive(NotificationCenter.default.publisher(for: .subtextToggleFocusMode)) { _ in
-            columnVisibility = columnVisibility == .detailOnly ? .automatic : .detailOnly
+            focusMode.toggle()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .subtextCycleFocusLevel)) { _ in
+            if focusMode.isOn {
+                focusMode.cycleLevel()
+            } else {
+                focusMode.level = .writing
+                focusMode.toggle()
+            }
+        }
+        .onChange(of: focusMode.isOn) { _, isOn in
+            withAnimation(Motion.medium) {
+                columnVisibility = isOn ? .detailOnly : .automatic
+            }
         }
         .onReceive(NotificationCenter.default.publisher(for: .subtextOpenKeyboardShortcuts)) { _ in
             requestModal(.keyboardShortcuts)
@@ -102,7 +120,16 @@ struct ContentView: View {
                 await devServer.shutdownForQuit()
             }
         }
-        .sheet(item: $activeModal, onDismiss: presentPendingModalIfNeeded) { modal in
+        .subtextModal(
+            item: $activeModal,
+            style: { modal in
+                switch modal {
+                case .palette: .command
+                case .keyboardShortcuts: .glassCard(width: 420, height: 420)
+                }
+            },
+            onDismiss: presentPendingModalIfNeeded
+        ) { modal in
             switch modal {
             case .palette(let mode):
                 CommandPalette(mode: mode) { command in
@@ -170,6 +197,7 @@ struct ContentView: View {
         case .project(let fileName, _):
             tab = .projects
             store.selectedProjectFileName = fileName
+            recents.record(fileName: fileName)
         case .bodyHit(_, _, let target):
             switch target {
             case .section(let id, _):
@@ -178,7 +206,15 @@ struct ContentView: View {
             case .project(let fileName, _):
                 tab = .projects
                 store.selectedProjectFileName = fileName
+                recents.record(fileName: fileName)
             }
+        case .recent(let fileName, _):
+            tab = .projects
+            store.selectedProjectFileName = fileName
+            recents.record(fileName: fileName)
+        case .insertBlock(let kind):
+            tab = .projects
+            store.pendingBlockKind = kind
         }
         Task { @MainActor in
             await Task.yield()

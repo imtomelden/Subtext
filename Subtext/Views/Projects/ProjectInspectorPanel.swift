@@ -6,6 +6,8 @@ struct ProjectInspectorPanel: View {
     var validationIssues: [ProjectValidationIssue]
     var isValidating: Bool
     var slugManuallyEdited: Bool
+    var titleDerivedSlug: String
+    var onSyncSlugFromTitle: () -> Void
 
     @Environment(CMSStore.self) private var store
     @State private var advancedExpanded = false
@@ -128,14 +130,17 @@ struct ProjectInspectorPanel: View {
         .padding(16)
     }
 
+    private var slugMatchesTitleDerived: Bool {
+        document.frontmatter.slug == titleDerivedSlug
+    }
+
     // MARK: - Always-visible Essentials
 
     @ViewBuilder
     private var essentialsSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             FieldRow("Title") {
-                TextField("Title", text: $document.frontmatter.title)
-                    .textFieldStyle(.roundedBorder)
+                SubtextTextField("Title", text: $document.frontmatter.title)
             }
 
             FieldRow("Ownership") {
@@ -150,9 +155,7 @@ struct ProjectInspectorPanel: View {
             }
 
             FieldRow("Description") {
-                TextField("Short description", text: $document.frontmatter.description, axis: .vertical)
-                    .textFieldStyle(.roundedBorder)
-                    .lineLimit(2...4)
+                SubtextTextField("Short description", text: $document.frontmatter.description, axis: .vertical, lineLimit: 2...4)
             }
 
             FieldRow("Date") {
@@ -171,11 +174,30 @@ struct ProjectInspectorPanel: View {
     private var advancedFields: some View {
         VStack(alignment: .leading, spacing: 12) {
             FieldRow("Slug") {
-                TextField("kebab-case-slug", text: $document.frontmatter.slug)
-                    .textFieldStyle(.roundedBorder)
+                HStack(alignment: .center, spacing: 8) {
+                    SubtextTextField("kebab-case-slug", text: $document.frontmatter.slug)
+                    if slugMatchesTitleDerived {
+                        Text("AUTO")
+                            .font(.caption2.weight(.bold))
+                            .foregroundStyle(Color.subtextAccent)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 3)
+                            .background(Capsule().fill(Color.subtextAccent.opacity(0.14)))
+                            .accessibilityLabel("Slug matches title")
+                    }
+                    Button {
+                        onSyncSlugFromTitle()
+                    } label: {
+                        Image(systemName: "arrow.triangle.2.circlepath")
+                    }
+                    .buttonStyle(.borderless)
+                    .foregroundStyle(Color.subtextAccent)
+                    .help("Reset slug from title")
+                    .accessibilityLabel("Sync slug from title")
+                }
             }
-            if !slugManuallyEdited {
-                Text("Auto-generated from title")
+            if slugManuallyEdited && !slugMatchesTitleDerived {
+                Text("Manual slug — does not track title changes.")
                     .font(.caption)
                     .foregroundStyle(Tokens.Text.tertiary)
             }
@@ -189,8 +211,7 @@ struct ProjectInspectorPanel: View {
             }
 
             FieldRow("External URL") {
-                TextField("https://… (optional)", text: optionalBinding(\.externalUrl))
-                    .textFieldStyle(.roundedBorder)
+                SubtextTextField("https://… (optional)", text: optionalBinding(\.externalUrl))
             }
 
             HStack(spacing: 16) {
@@ -212,12 +233,12 @@ struct ProjectInspectorPanel: View {
     @ViewBuilder
     private var caseStudyFields: some View {
         VStack(alignment: .leading, spacing: 12) {
-            FieldRow("Role")     { TextField("e.g. Lead designer", text: optionalBinding(\.role)).textFieldStyle(.roundedBorder) }
-            FieldRow("Duration") { TextField("e.g. 3 months", text: optionalBinding(\.duration)).textFieldStyle(.roundedBorder) }
-            FieldRow("Impact")   { TextField("Headline outcome", text: optionalBinding(\.impact), axis: .vertical).textFieldStyle(.roundedBorder).lineLimit(2...3) }
-            FieldRow("Challenge"){ TextField("What problem this addressed", text: optionalBinding(\.challenge), axis: .vertical).textFieldStyle(.roundedBorder).lineLimit(2...3) }
-            FieldRow("Approach") { TextField("How you tackled it", text: optionalBinding(\.approach), axis: .vertical).textFieldStyle(.roundedBorder).lineLimit(2...3) }
-            FieldRow("Outcome")  { TextField("What shipped", text: optionalBinding(\.outcome), axis: .vertical).textFieldStyle(.roundedBorder).lineLimit(2...3) }
+            FieldRow("Role")     { SubtextTextField("e.g. Lead designer", text: optionalBinding(\.role)) }
+            FieldRow("Duration") { SubtextTextField("e.g. 3 months", text: optionalBinding(\.duration)) }
+            FieldRow("Impact")   { SubtextTextField("Headline outcome", text: optionalBinding(\.impact), axis: .vertical, lineLimit: 2...3) }
+            FieldRow("Challenge"){ SubtextTextField("What problem this addressed", text: optionalBinding(\.challenge), axis: .vertical, lineLimit: 2...3) }
+            FieldRow("Approach") { SubtextTextField("How you tackled it", text: optionalBinding(\.approach), axis: .vertical, lineLimit: 2...3) }
+            FieldRow("Outcome")  { SubtextTextField("What shipped", text: optionalBinding(\.outcome), axis: .vertical, lineLimit: 2...3) }
         }
     }
 
@@ -227,18 +248,18 @@ struct ProjectInspectorPanel: View {
             Text("Overrides the hero block. Leave empty to use title and description.")
                 .font(.caption)
                 .foregroundStyle(Tokens.Text.tertiary)
-            FieldRow("Eyebrow")  { TextField("Small label above title", text: heroBinding(\.eyebrow)).textFieldStyle(.roundedBorder) }
-            FieldRow("Title")    { TextField("Hero title", text: heroBinding(\.title)).textFieldStyle(.roundedBorder) }
-            FieldRow("Subtitle") { TextField("Hero subtitle", text: heroBinding(\.subtitle), axis: .vertical).textFieldStyle(.roundedBorder).lineLimit(2...3) }
+            FieldRow("Eyebrow")  { SubtextTextField("Small label above title", text: heroBinding(\.eyebrow)) }
+            FieldRow("Title")    { SubtextTextField("Hero title", text: heroBinding(\.title)) }
+            FieldRow("Subtitle") { SubtextTextField("Hero subtitle", text: heroBinding(\.subtitle), axis: .vertical, lineLimit: 2...3) }
         }
     }
 
     @ViewBuilder
     private var videoFields: some View {
         VStack(alignment: .leading, spacing: 12) {
-            FieldRow("Runtime")      { TextField("e.g. 3m 45s", text: optionalVideoMetaBinding(\.runtime)).textFieldStyle(.roundedBorder) }
-            FieldRow("Platform")     { TextField("YouTube, Vimeo…", text: optionalVideoMetaBinding(\.platform)).textFieldStyle(.roundedBorder) }
-            FieldRow("Transcript")   { TextField("https://…", text: optionalVideoMetaBinding(\.transcriptUrl)).textFieldStyle(.roundedBorder) }
+            FieldRow("Runtime")      { SubtextTextField("e.g. 3m 45s", text: optionalVideoMetaBinding(\.runtime)) }
+            FieldRow("Platform")     { SubtextTextField("YouTube, Vimeo…", text: optionalVideoMetaBinding(\.platform)) }
+            FieldRow("Transcript")   { SubtextTextField("https://…", text: optionalVideoMetaBinding(\.transcriptUrl)) }
             FieldRow("Credits") {
                 StringListEditor(
                     items: videoMetaCreditsBinding,

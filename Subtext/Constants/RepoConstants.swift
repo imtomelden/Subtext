@@ -136,14 +136,11 @@ enum RepoConstants {
     static let backupRetentionPerFile: Int = 20
 
     /// Minimum window size.
-    static let minimumWindowSize: CGSize = CGSize(width: 1100, height: 720)
+    static let minimumWindowSize: CGSize = CGSize(width: 980, height: 680)
 
     /// Fixed sidebar width.
     /// Sidebar column — slightly wider ideal so git status and titles truncate less.
     static let sidebarWidth: CGFloat = 244
-
-    /// Detail panel width.
-    static let detailPanelWidth: CGFloat = 600
 
     /// Astro's default dev-server port — matches `npm run dev` in Website/.
     static let devServerURL: URL = URL(string: "http://localhost:4321")!

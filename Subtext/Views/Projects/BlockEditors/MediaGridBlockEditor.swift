@@ -2,6 +2,9 @@ import SwiftUI
 
 struct MediaGalleryBlockEditor: View {
     @Binding var block: MediaGalleryBlock
+    @State private var mediaDrag = DragReorderState(spacing: 12)
+
+    private let itemStackSpacing: CGFloat = 12
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -10,36 +13,14 @@ struct MediaGalleryBlockEditor: View {
                 .textFieldStyle(.roundedBorder)
             }
 
-            VStack(alignment: .leading, spacing: 12) {
-                ForEach(block.items.indices, id: \.self) { idx in
-                    HStack(alignment: .top, spacing: 10) {
-                        MediaThumbnail(src: block.items[safe: idx]?.src ?? "")
-
-                        VStack(alignment: .leading, spacing: 8) {
-                            TextField("/images/...", text: src(at: idx))
-                                .textFieldStyle(.roundedBorder)
-                            TextField("Alt text", text: alt(at: idx))
-                                .textFieldStyle(.roundedBorder)
-                            TextField("Caption (optional)", text: caption(at: idx))
-                                .textFieldStyle(.roundedBorder)
-                            TextField("Source/Credit (optional)", text: credit(at: idx))
-                                .textFieldStyle(.roundedBorder)
-                            TextField("Date (optional, YYYY-MM-DD)", text: date(at: idx))
-                                .textFieldStyle(.roundedBorder)
-                            TextField("Location (optional)", text: location(at: idx))
-                                .textFieldStyle(.roundedBorder)
-                        }
-
-                        Button(role: .destructive) {
-                            block.items.remove(at: idx)
-                        } label: {
-                            Image(systemName: "minus.circle.fill")
-                        }
-                        .buttonStyle(.plain)
-                        .foregroundStyle(.secondary)
-                    }
-                    .padding(10)
-                    .background(SubtextUI.Surface.subtleFill, in: RoundedRectangle(cornerRadius: SubtextUI.Radius.small))
+            VStack(alignment: .leading, spacing: itemStackSpacing) {
+                ReorderableVStack(
+                    items: block.items,
+                    spacing: itemStackSpacing,
+                    dragState: block.items.count > 1 ? mediaDrag : nil,
+                    onMove: { block.items.move(fromOffsets: $0, toOffset: $1) }
+                ) { item, controls in
+                    mediaRow(itemID: item.id, controls: controls)
                 }
 
                 Button {
@@ -50,6 +31,40 @@ struct MediaGalleryBlockEditor: View {
                 .buttonStyle(.borderless)
                 .foregroundStyle(Color.subtextAccent)
             }
+        }
+    }
+
+    @ViewBuilder
+    private func mediaRow(itemID: MediaGalleryBlock.Item.ID, controls: AnyView) -> some View {
+        if let idx = block.items.firstIndex(where: { $0.id == itemID }) {
+            HStack(alignment: .top, spacing: 8) {
+                controls
+
+                VStack(alignment: .leading, spacing: 8) {
+                    AssetPathField(path: src(at: idx), placeholder: "/images/…")
+
+                    TextField("Alt text", text: alt(at: idx))
+                        .textFieldStyle(.roundedBorder)
+                    TextField("Caption (optional)", text: caption(at: idx))
+                        .textFieldStyle(.roundedBorder)
+                    TextField("Source/Credit (optional)", text: credit(at: idx))
+                        .textFieldStyle(.roundedBorder)
+                    TextField("Date (optional, YYYY-MM-DD)", text: date(at: idx))
+                        .textFieldStyle(.roundedBorder)
+                    TextField("Location (optional)", text: location(at: idx))
+                        .textFieldStyle(.roundedBorder)
+                }
+
+                Button(role: .destructive) {
+                    block.items.remove(at: idx)
+                } label: {
+                    Image(systemName: "minus.circle.fill")
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
+            }
+            .padding(10)
+            .background(SubtextUI.Surface.subtleFill, in: RoundedRectangle(cornerRadius: SubtextUI.Radius.small))
         }
     }
 
@@ -88,35 +103,5 @@ struct MediaGalleryBlockEditor: View {
             get: { block.items[safe: idx]?.location ?? "" },
             set: { v in if idx < block.items.count { block.items[idx].location = v.isEmpty ? nil : v } }
         )
-    }
-}
-
-/// Resolves a relative image path against `/public` for a quick preview.
-private struct MediaThumbnail: View {
-    let src: String
-
-    var body: some View {
-        Group {
-            if let url = resolvedURL,
-               let image = NSImage(contentsOf: url) {
-                Image(nsImage: image)
-                    .resizable()
-                    .aspectRatio(contentMode: .fill)
-            } else {
-                Image(systemName: "photo")
-                    .font(.system(size: 22))
-                    .foregroundStyle(.secondary)
-            }
-        }
-        .frame(width: 72, height: 72)
-        .clipShape(RoundedRectangle(cornerRadius: SubtextUI.Radius.small, style: .continuous))
-        .background(SubtextUI.Surface.subtleFill, in: RoundedRectangle(cornerRadius: SubtextUI.Radius.small, style: .continuous))
-    }
-
-    private var resolvedURL: URL? {
-        guard !src.isEmpty else { return nil }
-        if src.hasPrefix("http") { return nil }
-        let trimmed = src.hasPrefix("/") ? String(src.dropFirst()) : src
-        return RepoConstants.publicDirectory.appending(path: trimmed, directoryHint: .notDirectory)
     }
 }

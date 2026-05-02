@@ -5,12 +5,11 @@ struct HeaderImageBlockEditor: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            FieldRow("Image path") {
-                TextField("/images/…", text: $block.src)
-                    .textFieldStyle(.roundedBorder)
+            FieldRow("Image") {
+                AssetPathField(path: $block.src, placeholder: "/images/…")
             }
             FieldRow("Alt text") {
-                TextField("Optional", text: Binding(
+                TextField("Optional description for screen readers", text: Binding(
                     get: { block.alt ?? "" },
                     set: { block.alt = $0.isEmpty ? nil : $0 }
                 ))

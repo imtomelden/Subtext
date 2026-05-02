@@ -44,10 +44,13 @@ struct BlockCardView: View {
             }
         }
         .contentShape(Rectangle())
+        .hoverLift(scale: 1.003, shadowRadius: 4)
         .onTapGesture(count: 2, perform: onEdit)
-        .alert("Delete this block?", isPresented: $confirmDelete) {
+        .alert(blockDeleteAlertTitle, isPresented: $confirmDelete) {
             Button("Delete", role: .destructive, action: onDelete)
             Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This block will be removed. You can undo right after.")
         }
     }
 
@@ -65,6 +68,12 @@ struct BlockCardView: View {
         .padding(.horizontal, SubtextUI.Spacing.small)
         .padding(.vertical, SubtextUI.Spacing.xSmall)
         .background(Capsule().fill(color.opacity(0.16)))
+    }
+
+    private var blockDeleteAlertTitle: String {
+        let label = block.inlinePreview.trimmingCharacters(in: .whitespacesAndNewlines)
+        let named = label.isEmpty ? block.kind.displayName : String(label.prefix(80))
+        return "Delete \"\(named)\"?"
     }
 
     private var previewMediaPath: String? {

@@ -86,6 +86,9 @@ final class CMSStore {
     var editingCTAID: String?
     var editingBlockID: UUID?
     var editingProjectSourceBlockIDForPanel: UUID?
+    /// Set by the command palette to trigger a block insertion in the active
+    /// project. ProjectsRootView observes this and clears it after handling.
+    var pendingBlockKind: ProjectBlock.Kind? = nil
 
     /// Most recent reversible action. The UI surfaces this in a toast-style
     /// undo banner; tapping Undo invokes `restore` and clears the entry.

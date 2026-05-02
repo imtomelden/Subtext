@@ -2,6 +2,8 @@ import SwiftUI
 
 struct SpeechVisualEditor: View {
     @Binding var visual: VisualContent
+    @State private var previewExpanded = true
+
     private static let secondsFormatter: NumberFormatter = {
         let formatter = NumberFormatter()
         formatter.numberStyle = .none
@@ -55,6 +57,20 @@ struct SpeechVisualEditor: View {
             }
             .buttonStyle(.borderless)
             .foregroundStyle(Color.subtextAccent)
+
+            DisclosureGroup(isExpanded: $previewExpanded) {
+                SpeechBlockPreview(
+                    messages: messages,
+                    delayMin: speech.randomDelayMinSeconds,
+                    delayMax: speech.randomDelayMaxSeconds
+                )
+                .padding(.top, 6)
+            } label: {
+                Text("Preview")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Color.subtextAccent)
+            }
+            .animation(Motion.snappy, value: previewExpanded)
         }
     }
 
@@ -118,8 +134,7 @@ struct SpeechVisualEditor: View {
             .labelsHidden()
             .frame(width: 100)
 
-            TextField("Message", text: textBinding(idx: idx))
-                .textFieldStyle(.roundedBorder)
+            SubtextTextField("Message", text: textBinding(idx: idx))
 
             Button(role: .destructive) {
                 var m = messages
@@ -157,5 +172,69 @@ struct SpeechVisualEditor: View {
                 write(m)
             }
         )
+    }
+}
+
+private struct SpeechBlockPreview: View {
+    let messages: [SpeechMessage]
+    let delayMin: Int?
+    let delayMax: Int?
+
+    var body: some View {
+        let minS = delayMin ?? 10
+        let maxS = delayMax ?? 20
+        VStack(alignment: .leading, spacing: 10) {
+            if messages.isEmpty {
+                Text("No messages yet")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+            } else {
+                ForEach(Array(messages.enumerated()), id: \.offset) { index, msg in
+                    if index > 0, minS > 0 || maxS > 0 {
+                        Text("…")
+                            .font(.caption.italic())
+                            .foregroundStyle(.tertiary)
+                            .frame(maxWidth: .infinity, alignment: msg.side == .left ? .leading : .trailing)
+                            .accessibilityLabel("Random delay between replies, about \(minS)–\(maxS) seconds")
+                    }
+                    bubble(msg)
+                }
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(Tokens.Background.surface)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .strokeBorder(Tokens.Border.default, lineWidth: 0.5)
+                )
+        )
+    }
+
+    @ViewBuilder
+    private func bubble(_ msg: SpeechMessage) -> some View {
+        let isLeft = msg.side == .left
+        HStack {
+            if !isLeft { Spacer(minLength: 40) }
+            Text(msg.text.isEmpty ? "Message" : msg.text)
+                .font(.caption)
+                .foregroundStyle(Tokens.Text.primary)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .fill(isLeft ? Color.subtextAccent.opacity(0.16) : Tokens.Background.elevated)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .strokeBorder(
+                            isLeft ? Color.subtextAccent.opacity(0.22) : Tokens.Border.subtle,
+                            lineWidth: 0.5
+                        )
+                )
+            if isLeft { Spacer(minLength: 40) }
+        }
     }
 }

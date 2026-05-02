@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// Shared thumbnail that resolves a relative website path (e.g. `/images/x.png`)
 /// against the Website repo's `/public` directory.
@@ -57,11 +58,10 @@ struct AssetThumbnail: View {
             image = cached
             return
         }
-        let loaded = await Task.detached(priority: .utility) { () -> NSImage? in
-            guard let data = try? Data(contentsOf: url),
-                  let decoded = NSImage(data: data) else { return nil }
-            return decoded
+        let data = await Task.detached(priority: .utility) { () -> Data? in
+            try? Data(contentsOf: url)
         }.value
+        let loaded = data.flatMap(NSImage.init(data:))
         if let loaded {
             Self.cache.setObject(loaded, forKey: url as NSURL)
         }
@@ -128,6 +128,7 @@ struct AssetPathField: View {
 
     @State private var showError = false
     @State private var errorMessage = ""
+    @State private var dropHover = false
 
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
@@ -169,11 +170,117 @@ struct AssetPathField: View {
                 }
             }
         }
+        .padding(8)
+        .background(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .strokeBorder(dropHover ? Color.subtextAccent.opacity(0.55) : Color.clear, lineWidth: 1.5)
+        )
+        .animation(Motion.snappy, value: dropHover)
+        .onDrop(of: [.fileURL, .image], isTargeted: $dropHover) { providers in
+            handleDropProviders(providers)
+        }
         .alert("File not inside /public", isPresented: $showError) {
             Button("OK", role: .cancel) {}
         } message: {
             Text(errorMessage)
         }
+    }
+
+    private func handleDropProviders(_ providers: [NSItemProvider]) -> Bool {
+        guard let provider = providers.first else { return false }
+        if provider.canLoadObject(ofClass: URL.self) {
+            _ = provider.loadObject(ofClass: URL.self) { url, _ in
+                guard let url else { return }
+                DispatchQueue.main.async {
+                    ingestDroppedFileURL(url)
+                }
+            }
+            return true
+        }
+        provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier, options: nil) { item, _ in
+            let url: URL?
+            switch item {
+            case let u as URL:
+                url = u
+            case let ns as NSURL:
+                url = ns as URL
+            case let data as Data:
+                url = URL(dataRepresentation: data, relativeTo: nil)
+            default:
+                url = nil
+            }
+            guard let url else { return }
+            DispatchQueue.main.async {
+                ingestDroppedFileURL(url)
+            }
+        }
+        return true
+    }
+
+    private func ingestDroppedFileURL(_ url: URL) {
+        guard url.isFileURL else { return }
+
+        let didStart = url.startAccessingSecurityScopedResource()
+        defer {
+            if didStart { url.stopAccessingSecurityScopedResource() }
+        }
+
+        let publicRoot = RepoConstants.publicDirectory.path(percentEncoded: false)
+        var chosen = url
+
+        let ext = chosen.pathExtension.lowercased()
+        let imageExt: Set<String> = ["jpg", "jpeg", "png", "gif", "webp", "svg", "avif", "heic", "tif", "tiff"]
+        let isAllowed = imageExt.contains(ext) || ext.isEmpty || ext == "pdf" || ext == "mp4" || ext == "mov"
+        guard isAllowed else {
+            errorMessage = "Dropped file type isn’t supported here. Use images or compatible media."
+            showError = true
+            return
+        }
+
+        if !chosen.path(percentEncoded: false).hasPrefix(publicRoot) {
+            do {
+                chosen = try copyIntoPublicImages(from: chosen)
+            } catch {
+                errorMessage = "Could not copy into /public/images: \(error.localizedDescription)"
+                showError = true
+                return
+            }
+        }
+
+        guard chosen.path(percentEncoded: false).hasPrefix(publicRoot) else {
+            errorMessage = "Copied file must resolve under /public."
+            showError = true
+            return
+        }
+        let relative = String(chosen.path(percentEncoded: false).dropFirst(publicRoot.count))
+        path = relative.hasPrefix("/") ? relative : "/" + relative
+    }
+
+    /// Copies file into `/public/images` with uniqueness; returns the resolved file URL under public.
+    private func copyIntoPublicImages(from source: URL) throws -> URL {
+        let fm = FileManager.default
+        let imagesDir = RepoConstants.publicDirectory.appending(path: "images", directoryHint: .isDirectory)
+        try fm.createDirectory(at: imagesDir, withIntermediateDirectories: true)
+
+        let baseName = source.deletingPathExtension().lastPathComponent
+        let ext = source.pathExtension
+        let extSuffix = ext.isEmpty ? "" : ".\(ext)"
+
+        func uniqueDestination() throws -> URL {
+            var candidate = imagesDir.appending(path: "\(baseName)\(extSuffix)", directoryHint: .notDirectory)
+            var suffix = 2
+            while fm.fileExists(atPath: candidate.path(percentEncoded: false)) {
+                candidate = imagesDir.appending(path: "\(baseName)-\(suffix)\(extSuffix)", directoryHint: .notDirectory)
+                suffix += 1
+            }
+            return candidate
+        }
+
+        let dest = try uniqueDestination()
+        if fm.fileExists(atPath: source.path(percentEncoded: false)) {
+            try fm.copyItem(at: source, to: dest)
+        }
+        return dest
     }
 
     private func chooseFile() {
