@@ -4,8 +4,10 @@ struct ProjectsListView: View {
     @Environment(CMSStore.self) private var store
     @Environment(\.contentDensity) private var density
     @State private var showNewProjectSheet = false
+    @State private var showTagManager = false
     @State private var deleteTarget: ProjectDocument?
     @State private var searchText = ""
+    @State private var showArchived = false
     @FocusState private var searchFocused: Bool
 
     var body: some View {
@@ -34,12 +36,12 @@ struct ProjectsListView: View {
                             ProjectListCard(
                                 document: project,
                                 seoIssues: seoIssuesByFileName[project.fileName] ?? [],
-                                isSelected: store.selectedProjectFileName == project.fileName
-                            ) {
-                                store.selectedProjectFileName = project.fileName
-                            } onDelete: {
-                                deleteTarget = project
-                            }
+                                isSelected: store.selectedProjectFileName == project.fileName,
+                                onOpen: { store.selectedProjectFileName = project.fileName },
+                                onDelete: { deleteTarget = project },
+                                onDuplicate: { Task { await store.duplicateProject(project) } },
+                                onArchive: { Task { await store.setProjectArchived(project.fileName, archived: !project.frontmatter.archived) } }
+                            )
                         }
                     }
                     .padding(.horizontal, 10)
@@ -50,6 +52,9 @@ struct ProjectsListView: View {
         }
         .sheet(isPresented: $showNewProjectSheet) {
             NewProjectSheet()
+        }
+        .sheet(isPresented: $showTagManager) {
+            TagManagerSheet()
         }
         .onReceive(NotificationCenter.default.publisher(for: .subtextNewItem)) { _ in
             showNewProjectSheet = true
@@ -75,16 +80,38 @@ struct ProjectsListView: View {
     // MARK: - Header
 
     private var listHeader: some View {
-        HStack(alignment: .center) {
+        let archivedCount = store.projects.filter { $0.frontmatter.archived }.count
+        return HStack(alignment: .center) {
             VStack(alignment: .leading, spacing: 2) {
                 Text("Projects")
                     .font(.headline.weight(.semibold))
                     .foregroundStyle(Tokens.Text.primary)
-                Text("\(store.projects.count) projects")
+                Text("\(store.projects.filter { !$0.frontmatter.archived }.count) projects")
                     .font(.caption2)
                     .foregroundStyle(Tokens.Text.tertiary)
             }
             Spacer()
+
+            if archivedCount > 0 {
+                Button {
+                    withAnimation(UXMotion.micro) { showArchived.toggle() }
+                } label: {
+                    Text(showArchived ? "Hide archived" : "Archived (\(archivedCount))")
+                        .font(.caption2)
+                        .foregroundStyle(showArchived ? Color.subtextAccent : Tokens.Text.tertiary)
+                }
+                .buttonStyle(.plain)
+                .help(showArchived ? "Hide archived projects" : "Show archived projects")
+            }
+
+            Button {
+                showTagManager = true
+            } label: {
+                Image(systemName: "tag")
+                    .font(.system(size: 13, weight: .medium))
+            }
+            .subtextButton(.icon)
+            .help("Manage tags")
 
             Button {
                 showNewProjectSheet = true
@@ -169,8 +196,9 @@ struct ProjectsListView: View {
 
     private var filteredProjects: [ProjectDocument] {
         let q = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        guard !q.isEmpty else { return store.projects }
-        return store.projects.filter { doc in
+        let base = store.projects.filter { showArchived || !$0.frontmatter.archived }
+        guard !q.isEmpty else { return base }
+        return base.filter { doc in
             doc.frontmatter.title.lowercased().contains(q)
                 || doc.frontmatter.slug.lowercased().contains(q)
                 || doc.frontmatter.tags.contains { $0.lowercased().contains(q) }
@@ -190,6 +218,8 @@ private struct ProjectListCard: View {
     var isSelected: Bool = false
     var onOpen: () -> Void
     var onDelete: () -> Void
+    var onDuplicate: () -> Void = {}
+    var onArchive: () -> Void = {}
     @Environment(CMSStore.self) private var store
     @State private var isHovered = false
 
@@ -225,6 +255,15 @@ private struct ProjectListCard: View {
                             .padding(.horizontal, 5)
                             .padding(.vertical, 1)
                             .background(Capsule().fill(Color.subtextWarning.opacity(0.15)))
+                    }
+
+                    if document.frontmatter.archived {
+                        Text("Archived")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(Tokens.Text.tertiary)
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 1)
+                            .background(Capsule().fill(Tokens.Fill.tag))
                     }
 
                     if isDirty {
@@ -292,6 +331,14 @@ private struct ProjectListCard: View {
         .onHover { isHovered = $0 }
         .animation(UXMotion.micro, value: isHovered)
         .animation(UXMotion.micro, value: isSelected)
+        .contextMenu {
+            Button("Open", action: onOpen)
+            Button("Duplicate as draft", action: onDuplicate)
+            Divider()
+            Button(document.frontmatter.archived ? "Unarchive" : "Archive", action: onArchive)
+            Divider()
+            Button("Delete", role: .destructive, action: onDelete)
+        }
     }
 
     private var formattedDate: String {
