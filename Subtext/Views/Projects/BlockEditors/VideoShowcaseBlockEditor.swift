@@ -30,7 +30,8 @@ struct VideoShowcaseBlockEditor: View {
                 StringListEditor(
                     items: $block.highlights,
                     placeholder: "Highlight",
-                    addLabel: "Add highlight"
+                    addLabel: "Add highlight",
+                    showReorderControls: true
                 )
             }
 

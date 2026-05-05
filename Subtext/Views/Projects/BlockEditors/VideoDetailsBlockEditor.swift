@@ -27,31 +27,12 @@ struct VideoDetailsBlockEditor: View {
                 .textFieldStyle(.roundedBorder)
             }
             FieldRow("Credits") {
-                VStack(alignment: .leading, spacing: 8) {
-                    ForEach(Array(block.credits.enumerated()), id: \.offset) { i, _ in
-                        HStack {
-                            TextField("Name / role", text: Binding(
-                                get: { block.credits[i] },
-                                set: { block.credits[i] = $0 }
-                            ))
-                            .textFieldStyle(.roundedBorder)
-                            Button(role: .destructive) {
-                                block.credits.remove(at: i)
-                            } label: {
-                                Image(systemName: "minus.circle.fill")
-                            }
-                            .buttonStyle(.plain)
-                            .foregroundStyle(.secondary)
-                        }
-                    }
-                    Button {
-                        block.credits.append("")
-                    } label: {
-                        Label("Add credit", systemImage: "plus.circle.fill")
-                    }
-                    .buttonStyle(.borderless)
-                    .foregroundStyle(Color.subtextAccent)
-                }
+                StringListEditor(
+                    items: $block.credits,
+                    placeholder: "Name / role",
+                    addLabel: "Add credit",
+                    showReorderControls: true
+                )
             }
         }
     }
