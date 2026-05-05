@@ -86,7 +86,7 @@ struct MarkdownInlineFormatter {
                 prefix: "\\{\\{chip:Tooltip text|",
                 suffix: "\\}\\}",
                 placeholder: "\\{\\{chip:Tooltip text|chip label\\}\\}",
-                placeholderSelection: NSRange(location: 9, length: 12),
+                placeholderSelection: NSRange(location: 10, length: 12),
                 preferPlaceholderSelectionAfterWrap: true
             )
         }
