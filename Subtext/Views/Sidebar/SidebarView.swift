@@ -8,6 +8,7 @@ struct SidebarView: View {
     @Environment(\.openWindow) private var openWindow
 
     @State private var dashboardExpanded = false
+    @State private var serverDotHovered = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -151,11 +152,35 @@ struct SidebarView: View {
 
     private var footerRow: some View {
         HStack(spacing: 6) {
-            // Green dot: lit when dev server running, grey otherwise
-            Circle()
-                .fill(devServer.phase.isRunning ? Color(red: 0.13, green: 0.77, blue: 0.37) : Tokens.Text.tertiary)
-                .frame(width: 7, height: 7)
+            Button {
+                if devServer.phase.isRunning {
+                    devServer.stop()
+                } else if !devServer.phase.isTransitional {
+                    devServer.start()
+                }
+            } label: {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 4, style: .continuous)
+                        .fill(serverDotHovered ? AnyShapeStyle(.quaternary) : AnyShapeStyle(Color.clear))
+                        .frame(width: 20, height: 20)
+
+                    if devServer.phase.isTransitional {
+                        ProgressView()
+                            .controlSize(.mini)
+                            .scaleEffect(0.65)
+                    } else {
+                        Circle()
+                            .fill(devServer.phase.isRunning ? Color(red: 0.13, green: 0.77, blue: 0.37) : Tokens.Text.tertiary)
+                            .frame(width: serverDotHovered ? 9 : 7, height: serverDotHovered ? 9 : 7)
+                    }
+                }
                 .animation(Motion.snappy, value: devServer.phase.isRunning)
+                .animation(Motion.snappy, value: serverDotHovered)
+            }
+            .buttonStyle(.plain)
+            .onHover { serverDotHovered = $0 }
+            .help(devServer.phase.isRunning ? "Stop dev server" : devServer.phase.isTransitional ? "Dev server is busy…" : "Start dev server")
+            .disabled(devServer.phase.isTransitional)
 
             Text(git.status.branch)
                 .font(.system(size: 10.5, design: .monospaced))
