@@ -203,7 +203,21 @@ struct ProjectInspectorPanel: View {
             }
 
             FieldRow("Thumbnail") {
-                AssetPathField(path: optionalBinding(\.thumbnail))
+                VStack(alignment: .leading, spacing: 6) {
+                    AssetPathField(path: optionalBinding(\.thumbnail))
+                    if (document.frontmatter.thumbnail ?? "").isEmpty,
+                       let headerImage = document.frontmatter.headerImage,
+                       !headerImage.isEmpty {
+                        Button {
+                            document.frontmatter.thumbnail = headerImage
+                        } label: {
+                            Label("Use header image as thumbnail", systemImage: "arrow.down.to.line")
+                                .font(.caption)
+                        }
+                        .foregroundStyle(Color.subtextAccent)
+                        .buttonStyle(.plain)
+                    }
+                }
             }
 
             FieldRow("Header image") {

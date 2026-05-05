@@ -242,6 +242,7 @@ enum MDXParser {
             externalUrl: string("externalUrl"),
             featured: bool("featured"),
             draft: bool("draft"),
+            archived: bool("archived"),
             role: string("role"),
             duration: string("duration"),
             impact: string("impact"),

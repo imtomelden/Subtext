@@ -29,12 +29,10 @@ struct ProjectSnapshotBlockEditor: View {
             }
             HStack(alignment: .top, spacing: 12) {
                 FieldRow("Start date") {
-                    TextField("YYYY-MM-DD", text: $block.timelineStart)
-                        .textFieldStyle(.roundedBorder)
+                    DateField(value: $block.timelineStart)
                 }
                 FieldRow("Target completion") {
-                    TextField("YYYY-MM-DD", text: $block.timelineTargetCompletion)
-                        .textFieldStyle(.roundedBorder)
+                    DateField(value: $block.timelineTargetCompletion)
                 }
             }
             FieldRow("Budget headline") {

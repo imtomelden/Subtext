@@ -136,6 +136,9 @@ struct GitPanel: View {
             git.refresh()
             syncCommitFileSelection()
             messageFocused = true
+            if message.isEmpty {
+                message = suggestCommitMessage()
+            }
         }
         .onChange(of: git.status.entries) { _, _ in
             syncCommitFileSelection()
@@ -637,5 +640,46 @@ struct GitPanel: View {
         case .other: base = "changed"
         }
         return entry.isStaged ? "staged · \(base)" : base
+    }
+
+    private func suggestCommitMessage() -> String {
+        let entries = git.status.entries
+        guard !entries.isEmpty else { return "" }
+
+        let mdxEntries = entries.filter { $0.path.hasSuffix(".mdx") }
+        let otherEntries = entries.filter { !$0.path.hasSuffix(".mdx") }
+
+        func baseName(_ path: String) -> String {
+            (path.components(separatedBy: "/").last ?? path)
+                .replacingOccurrences(of: ".mdx", with: "")
+        }
+
+        if mdxEntries.count == 1, otherEntries.isEmpty {
+            let name = baseName(mdxEntries[0].path)
+            switch mdxEntries[0].change {
+            case .added, .untracked: return "Add \(name)"
+            case .deleted: return "Remove \(name)"
+            default: return "Update \(name)"
+            }
+        }
+
+        let added = mdxEntries.filter {
+            if case .added = $0.change { return true }
+            if case .untracked = $0.change { return true }
+            return false
+        }
+        let modified = mdxEntries.filter { if case .modified = $0.change { return true }; return false }
+        let deleted = mdxEntries.filter { if case .deleted = $0.change { return true }; return false }
+
+        if !added.isEmpty, modified.isEmpty, deleted.isEmpty, otherEntries.isEmpty {
+            let names = added.prefix(3).map { baseName($0.path) }.joined(separator: ", ")
+            return "Add \(names)"
+        }
+        if added.isEmpty, !modified.isEmpty, deleted.isEmpty, otherEntries.isEmpty {
+            let names = modified.prefix(3).map { baseName($0.path) }.joined(separator: ", ")
+            return "Update \(names)"
+        }
+
+        return "Update content"
     }
 }

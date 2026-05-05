@@ -40,11 +40,23 @@ struct ProjectMetaHeader: View {
     // MARK: - Title
 
     private var titleField: some View {
-        TextField("Untitled project", text: $document.frontmatter.title)
-            .textFieldStyle(.plain)
-            .font(.system(size: 26, weight: .heavy))
-            .foregroundStyle(Tokens.Text.primary)
-            .tracking(-0.78)  // ≈ -0.03em at 26px
+        let titleIssue = validationIssues.first(where: { $0.field == "title" })
+        return VStack(alignment: .leading, spacing: 4) {
+            TextField("Untitled project", text: $document.frontmatter.title)
+                .textFieldStyle(.plain)
+                .font(.system(size: 26, weight: .heavy))
+                .foregroundStyle(Tokens.Text.primary)
+                .tracking(-0.78)  // ≈ -0.03em at 26px
+            if let issue = titleIssue {
+                HStack(spacing: 4) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.system(size: 9))
+                    Text(issue.message)
+                        .font(.system(size: 10))
+                }
+                .foregroundStyle(Tokens.State.warning)
+            }
+        }
     }
 
     // MARK: - Chip Row
@@ -373,11 +385,34 @@ struct ProjectMetaHeader: View {
     // MARK: - Description
 
     private var descriptionField: some View {
-        TextField("Add a short description…", text: $document.frontmatter.description, axis: .vertical)
-            .textFieldStyle(.plain)
-            .font(.system(size: 13).italic())
-            .foregroundStyle(Tokens.Text.tertiary)
-            .lineLimit(2...4)
+        let count = document.frontmatter.description.count
+        let descIssue = validationIssues.first(where: { $0.field == "description" })
+        return VStack(alignment: .leading, spacing: 4) {
+            TextField("Add a short description…", text: $document.frontmatter.description, axis: .vertical)
+                .textFieldStyle(.plain)
+                .font(.system(size: 13).italic())
+                .foregroundStyle(Tokens.Text.tertiary)
+                .lineLimit(2...4)
+            HStack {
+                if let issue = descIssue {
+                    HStack(spacing: 4) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .font(.system(size: 9))
+                        Text(issue.message)
+                            .font(.system(size: 10))
+                    }
+                    .foregroundStyle(Tokens.State.warning)
+                }
+                Spacer()
+                Text("\(count) / 160")
+                    .font(.system(size: 10))
+                    .foregroundStyle(
+                        count >= 160 ? Color.subtextDanger :
+                        count >= 130 ? Tokens.State.warning :
+                        Tokens.Text.tertiary
+                    )
+            }
+        }
     }
 
     // MARK: - Helpers

@@ -39,6 +39,7 @@ enum MDXSerialiser {
         if !hasHeaderImageBlock, let headerImage = f.headerImage, !headerImage.isEmpty { lines.append(keyValue("headerImage", raw: headerImage)) }
         if let ext = f.externalUrl, !ext.isEmpty { lines.append(keyValue("externalUrl", raw: ext)) }
         if f.draft { lines.append("draft: true") }
+        if f.archived { lines.append("archived: true") }
 
         if !hasPageHero, let hero = f.hero, !hero.isEmpty {
             lines.append("hero:")

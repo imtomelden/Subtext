@@ -56,6 +56,7 @@ struct ProjectFrontmatter: Equatable, Sendable {
     var externalUrl: String?
     var featured: Bool
     var draft: Bool
+    var archived: Bool
     var role: String?
     var duration: String?
     var impact: String?
@@ -82,6 +83,7 @@ struct ProjectFrontmatter: Equatable, Sendable {
             externalUrl: nil,
             featured: false,
             draft: false,
+            archived: false,
             role: nil,
             duration: nil,
             impact: nil,
