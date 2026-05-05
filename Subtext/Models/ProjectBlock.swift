@@ -53,6 +53,28 @@ enum ProjectBlock: Equatable, Sendable, Identifiable {
         }
     }
 
+    /// True when the block has obviously missing required content (drives inline warning badge).
+    var hasValidationIssues: Bool {
+        switch self {
+        case .videoShowcase(let v):
+            switch v.source {
+            case .youtube(let id): return id.trimmingCharacters(in: .whitespaces).isEmpty
+            case .vimeo(let id): return id.trimmingCharacters(in: .whitespaces).isEmpty
+            case .file(let src, _, _, _, _): return src.trimmingCharacters(in: .whitespaces).isEmpty
+            }
+        case .mediaGallery(let v):
+            return v.items.isEmpty || v.items.contains { $0.src.trimmingCharacters(in: .whitespaces).isEmpty }
+        case .headerImage(let v):
+            return v.src.trimmingCharacters(in: .whitespaces).isEmpty
+        case .externalLink(let v):
+            return v.href.trimmingCharacters(in: .whitespaces).isEmpty
+        case .projectSnapshot(let v):
+            return v.projectTitle.trimmingCharacters(in: .whitespaces).isEmpty
+        default:
+            return false
+        }
+    }
+
     enum Kind: String, CaseIterable, Identifiable, Sendable {
         case projectSnapshot
         case keyStats

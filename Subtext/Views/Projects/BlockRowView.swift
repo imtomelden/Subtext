@@ -9,9 +9,11 @@ struct BlockRowView: View {
     var onToggleExpand: () -> Void
     var onDelete: () -> Void
     var onDuplicate: () -> Void
+    var onInsertBelow: (() -> Void)? = nil
 
     @State private var draftBlock: ProjectBlock
     @State private var confirmDelete = false
+    @State private var isHovered = false
 
     init(
         block: Binding<ProjectBlock>,
@@ -19,7 +21,8 @@ struct BlockRowView: View {
         reorderControls: AnyView? = nil,
         onToggleExpand: @escaping () -> Void,
         onDelete: @escaping () -> Void,
-        onDuplicate: @escaping () -> Void
+        onDuplicate: @escaping () -> Void,
+        onInsertBelow: (() -> Void)? = nil
     ) {
         self._block = block
         self.isExpanded = isExpanded
@@ -27,6 +30,7 @@ struct BlockRowView: View {
         self.onToggleExpand = onToggleExpand
         self.onDelete = onDelete
         self.onDuplicate = onDuplicate
+        self.onInsertBelow = onInsertBelow
         self._draftBlock = State(initialValue: block.wrappedValue)
     }
 
@@ -38,6 +42,7 @@ struct BlockRowView: View {
                     .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
+        .onHover { h in withAnimation(Motion.micro) { isHovered = h } }
         .onChange(of: isExpanded) { _, expanded in
             if expanded {
                 // Fresh draft when opening
@@ -49,6 +54,10 @@ struct BlockRowView: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("This block will be removed. You can undo right after.")
+        }
+        .onKeyPress(.return) {
+            onToggleExpand()
+            return .handled
         }
     }
 
@@ -108,7 +117,22 @@ struct BlockRowView: View {
         .background(isExpanded ? Color.subtextAccent.opacity(0.08) : Color.clear)
         .animation(Motion.short, value: isExpanded)
         .overlay(alignment: .bottom) {
-            Rectangle().fill(Tokens.Border.subtle).frame(height: 1)
+            ZStack(alignment: .bottom) {
+                Rectangle()
+                    .fill(Tokens.Border.subtle)
+                    .frame(height: 1)
+                if let insert = onInsertBelow, isHovered && !isExpanded {
+                    Button(action: insert) {
+                        Image(systemName: "plus.circle.fill")
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundStyle(Color.subtextAccent)
+                            .background(Circle().fill(Tokens.Background.elevated))
+                    }
+                    .buttonStyle(.plain)
+                    .help("Insert block here")
+                    .transition(.opacity)
+                }
+            }
         }
         .contentShape(Rectangle())
         .contextMenu {
@@ -134,13 +158,22 @@ struct BlockRowView: View {
     private var blockPill: some View {
         let c = block.kind.pillColor
         let color = Color(red: c.r, green: c.g, blue: c.b)
-        return Text(block.kind.shortPillName)
-            .font(.system(size: 9, weight: .bold, design: .monospaced))
-            .foregroundStyle(color)
-            .tracking(0.9)
-            .padding(.horizontal, 7)
-            .padding(.vertical, 2)
-            .background(Capsule().fill(color.opacity(0.18)))
+        return ZStack(alignment: .topTrailing) {
+            Text(block.kind.shortPillName)
+                .font(.system(size: 9, weight: .bold, design: .monospaced))
+                .foregroundStyle(color)
+                .tracking(0.9)
+                .padding(.horizontal, 7)
+                .padding(.vertical, 2)
+                .background(Capsule().fill(color.opacity(0.18)))
+
+            if block.hasValidationIssues {
+                Circle()
+                    .fill(Color.orange)
+                    .frame(width: 6, height: 6)
+                    .offset(x: 2, y: -2)
+            }
+        }
     }
 
     // MARK: - Expansion panel

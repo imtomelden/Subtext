@@ -510,7 +510,12 @@ final class CMSStore {
     func isDirty(for tab: SidebarTab) -> Bool {
         switch tab {
         case .home: isSplashDirty
-        case .projects: anyProjectDirty
+        case .projects:
+            if let file = selectedProjectFileName {
+                isProjectDirty(file)
+            } else {
+                anyProjectDirty
+            }
         case .settings: isSiteDirty
         }
     }

@@ -3,7 +3,7 @@ import SwiftUI
 
 struct ProjectEditorView: View {
     @Binding var document: ProjectDocument
-    var onAddBlock: () -> Void
+    var onAddBlock: (_ insertAt: Int?) -> Void
     var onShowHistory: () -> Void
 
     @Environment(CMSStore.self) private var store
@@ -20,6 +20,7 @@ struct ProjectEditorView: View {
     @State private var validationIssues: [ProjectValidationIssue] = []
     @State private var isValidating = false
     @State private var blockDrag = DragReorderState(spacing: 0)
+    @State private var blockSearch = ""
 
     var body: some View {
         editorContent
@@ -205,7 +206,7 @@ struct ProjectEditorView: View {
 
             // Group 4 — primary action
             Button {
-                onAddBlock()
+                onAddBlock(nil)
             } label: {
                 Label("Add block", systemImage: "plus")
             }
@@ -239,70 +240,181 @@ struct ProjectEditorView: View {
     @ViewBuilder
     private var blocksCanvas: some View {
         @Bindable var store = store
+        let blocks = document.frontmatter.blocks
+        let filtered: [ProjectBlock] = blockSearch.isEmpty
+            ? blocks
+            : blocks.filter { block in
+                block.kind.displayName.localizedCaseInsensitiveContains(blockSearch)
+                || block.inlinePreview.localizedCaseInsensitiveContains(blockSearch)
+            }
+        let hasLayoutBlocks = filtered.contains { $0.isLayoutBlock }
+        let hasContentBlocks = filtered.contains { !$0.isLayoutBlock }
+
         VStack(alignment: .leading, spacing: 0) {
-            // Section header — ALL-CAPS design label
+            // Section header
             HStack(spacing: 8) {
                 Text("BLOCKS")
                     .font(.system(size: 10, weight: .bold))
                     .foregroundStyle(Tokens.Text.tertiary)
                     .tracking(0.9)
-                if document.frontmatter.blocks.count > 0 {
-                    Text("\(document.frontmatter.blocks.count)")
+                if blocks.count > 0 {
+                    Text("\(blocks.count)")
                         .font(.system(size: 9.5, weight: .bold))
                         .foregroundStyle(Tokens.Text.tertiary)
                         .padding(.horizontal, 7)
                         .padding(.vertical, 1)
                         .background(Capsule().fill(Tokens.Fill.tag))
                 }
-                if document.frontmatter.blocks.count > 1 {
+                if blocks.count > 1 {
                     Text("Drag or ⌘↑↓ to reorder")
                         .font(.system(size: 10.5))
                         .foregroundStyle(Tokens.Text.tertiary)
                 }
                 Spacer()
+                if store.editingBlockID != nil {
+                    Button("Collapse all") {
+                        withAnimation(Motion.spring) { store.editingBlockID = nil }
+                    }
+                    .font(.system(size: 10.5))
+                    .foregroundStyle(Tokens.Text.tertiary)
+                    .buttonStyle(.plain)
+                }
             }
             .padding(.bottom, 12)
 
-            if document.frontmatter.blocks.isEmpty {
-                Button(action: onAddBlock) {
-                    HStack(spacing: 6) {
-                        Image(systemName: "plus.circle")
-                            .font(.system(size: 13, weight: .medium))
-                        Text("Add your first block")
-                            .font(.callout)
+            if blocks.count > 1 {
+                HStack(spacing: 6) {
+                    Image(systemName: "magnifyingglass")
+                        .font(.system(size: 11))
+                        .foregroundStyle(Tokens.Text.tertiary)
+                    TextField("Filter blocks…", text: $blockSearch)
+                        .textFieldStyle(.plain)
+                        .font(.system(size: 12))
+                    if !blockSearch.isEmpty {
+                        Button { blockSearch = "" } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .foregroundStyle(Tokens.Text.tertiary)
+                        }
+                        .buttonStyle(.plain)
                     }
-                    .foregroundStyle(Tokens.Accent.subtleText)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 20)
                 }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Add first block")
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .fill(Tokens.Background.sunken)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                                .stroke(Tokens.Border.subtle, lineWidth: 1)
+                        )
+                )
+                .padding(.bottom, 10)
+            }
+
+            if blocks.isEmpty {
+                // Empty state — quick-add common blocks
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("No blocks yet. Add one to get started:")
+                        .font(.system(size: 12))
+                        .foregroundStyle(Tokens.Text.tertiary)
+                    HStack(spacing: 8) {
+                        ForEach([ProjectBlock.Kind.pageHero, .keyStats, .quote, .cta], id: \.self) { kind in
+                            Button {
+                                let block = ProjectBlock.empty(of: kind)
+                                document.frontmatter.blocks.append(block)
+                                withAnimation(Motion.spring) { store.editingBlockID = block.id }
+                            } label: {
+                                Label(kind.displayName, systemImage: kind.systemImage)
+                                    .font(.system(size: 11.5))
+                            }
+                            .subtextButton(.secondary)
+                        }
+                        Button {
+                            onAddBlock(nil)
+                        } label: {
+                            Label("More…", systemImage: "ellipsis")
+                                .font(.system(size: 11.5))
+                        }
+                        .subtextButton(.secondary)
+                    }
+                }
+                .padding(.vertical, 16)
+            } else if filtered.isEmpty {
+                Text("No blocks match \"\(blockSearch)\"")
+                    .font(.system(size: 12))
+                    .foregroundStyle(Tokens.Text.tertiary)
+                    .padding(.vertical, 16)
             } else {
                 // Open flat list — top border only, no card wrapper
                 Rectangle()
                     .fill(Tokens.Border.subtle)
                     .frame(height: 1)
 
-                ReorderableVStack(
-                    items: document.frontmatter.blocks,
-                    spacing: 0,
-                    dragState: blockDrag
-                ) { from, to in
-                    document.frontmatter.blocks.move(fromOffsets: from, toOffset: to)
-                } row: { block, controls in
-                    if let idx = document.frontmatter.blocks.firstIndex(where: { $0.id == block.id }) {
-                        BlockRowView(
-                            block: $document.frontmatter.blocks[idx],
-                            isExpanded: store.editingBlockID == block.id,
-                            reorderControls: controls,
-                            onToggleExpand: {
-                                withAnimation(Motion.spring) {
-                                    store.editingBlockID = store.editingBlockID == block.id ? nil : block.id
+                if blockSearch.isEmpty {
+                    // Full list with drag-to-reorder
+                    ReorderableVStack(
+                        items: blocks,
+                        spacing: 0,
+                        dragState: blockDrag
+                    ) { from, to in
+                        document.frontmatter.blocks.move(fromOffsets: from, toOffset: to)
+                    } row: { block, controls in
+                        if let idx = document.frontmatter.blocks.firstIndex(where: { $0.id == block.id }) {
+                            let listIdx = blocks.firstIndex(where: { $0.id == block.id }) ?? 0
+                            let prevBlock: ProjectBlock? = listIdx > 0 ? blocks[listIdx - 1] : nil
+                            let showGroupHeader = hasLayoutBlocks && hasContentBlocks
+                                && listIdx > 0
+                                && prevBlock?.isLayoutBlock != block.isLayoutBlock
+
+                            VStack(spacing: 0) {
+                                if showGroupHeader {
+                                    groupDivider(isLayout: block.isLayoutBlock)
                                 }
-                            },
-                            onDelete: { deleteBlock(block) },
-                            onDuplicate: { duplicateBlock(block) }
-                        )
+                                BlockRowView(
+                                    block: $document.frontmatter.blocks[idx],
+                                    isExpanded: store.editingBlockID == block.id,
+                                    reorderControls: controls,
+                                    onToggleExpand: {
+                                        withAnimation(Motion.spring) {
+                                            store.editingBlockID = store.editingBlockID == block.id ? nil : block.id
+                                        }
+                                    },
+                                    onDelete: { deleteBlock(block) },
+                                    onDuplicate: { duplicateBlock(block) },
+                                    onInsertBelow: { onAddBlock(idx + 1) }
+                                )
+                            }
+                        }
+                    }
+                } else {
+                    // Filtered list — no drag reorder
+                    VStack(spacing: 0) {
+                        ForEach(Array(filtered.enumerated()), id: \.element.id) { filteredIdx, block in
+                            if let idx = document.frontmatter.blocks.firstIndex(where: { $0.id == block.id }) {
+                                let prevBlock: ProjectBlock? = filteredIdx > 0 ? filtered[filteredIdx - 1] : nil
+                                let showGroupHeader = hasLayoutBlocks && hasContentBlocks
+                                    && filteredIdx > 0
+                                    && prevBlock?.isLayoutBlock != block.isLayoutBlock
+
+                                VStack(spacing: 0) {
+                                    if showGroupHeader {
+                                        groupDivider(isLayout: block.isLayoutBlock)
+                                    }
+                                    BlockRowView(
+                                        block: $document.frontmatter.blocks[idx],
+                                        isExpanded: store.editingBlockID == block.id,
+                                        onToggleExpand: {
+                                            withAnimation(Motion.spring) {
+                                                store.editingBlockID = store.editingBlockID == block.id ? nil : block.id
+                                            }
+                                        },
+                                        onDelete: { deleteBlock(block) },
+                                        onDuplicate: { duplicateBlock(block) },
+                                        onInsertBelow: { onAddBlock(idx + 1) }
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -380,6 +492,19 @@ struct ProjectEditorView: View {
         return useMonospacedSourceFont
             ? NSFont.monospacedSystemFont(ofSize: size, weight: .regular)
             : NSFont.systemFont(ofSize: size)
+    }
+
+    @ViewBuilder
+    private func groupDivider(isLayout: Bool) -> some View {
+        HStack(spacing: 6) {
+            Text(isLayout ? "LAYOUT" : "CONTENT")
+                .font(.system(size: 9, weight: .bold))
+                .foregroundStyle(Tokens.Text.tertiary)
+                .tracking(0.8)
+            Rectangle().fill(Tokens.Border.subtle).frame(height: 1)
+        }
+        .padding(.vertical, 8)
+        .padding(.horizontal, 2)
     }
 
     private func duplicateBlock(_ block: ProjectBlock) {

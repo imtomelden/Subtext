@@ -6,6 +6,7 @@ struct ProjectsRootView: View {
     @Environment(CMSStore.self) private var store
     @Environment(\.narrowLayout) private var narrowLayout
     @State private var activeSheet: ActiveSheet?
+    @State private var pendingInsertionIndex: Int? = nil
 
     private var listWidth: CGFloat {
         if narrowLayout.isVeryNarrow { return 232 }
@@ -26,10 +27,14 @@ struct ProjectsRootView: View {
                let binding = store.binding(forProject: fileName) {
                 ProjectEditorView(
                     document: binding,
-                    onAddBlock: { activeSheet = .blockPicker(fileName: fileName) },
+                    onAddBlock: { insertAt in
+                        pendingInsertionIndex = insertAt
+                        activeSheet = .blockPicker(fileName: fileName)
+                    },
                     onShowHistory: { activeSheet = .history(fileName: fileName) }
                 )
                 .onReceive(NotificationCenter.default.publisher(for: .subtextNewItem)) { _ in
+                    pendingInsertionIndex = nil
                     activeSheet = .blockPicker(fileName: fileName)
                 }
                 .id("editor.\(fileName)")
@@ -45,8 +50,7 @@ struct ProjectsRootView: View {
                 return
             }
             let block = ProjectBlock.empty(of: kind)
-            binding.wrappedValue.frontmatter.blocks.append(block)
-            store.editingBlockID = block.id
+            insertBlock(block, into: binding)
             store.pendingBlockKind = nil
         }
         .sheet(item: $activeSheet) { sheet in
@@ -54,7 +58,7 @@ struct ProjectsRootView: View {
             case .blockPicker(let fileName):
                 if let binding = store.binding(forProject: fileName) {
                     BlockPicker(
-                        title: "Add block",
+                        title: pendingInsertionIndex != nil ? "Insert block" : "Add block",
                         items: ProjectBlock.Kind.allCases.map {
                             PickerItem(
                                 id: $0.rawValue,
@@ -65,8 +69,7 @@ struct ProjectsRootView: View {
                         }
                     ) { kind in
                         let block = ProjectBlock.empty(of: kind)
-                        binding.wrappedValue.frontmatter.blocks.append(block)
-                        store.editingBlockID = block.id
+                        insertBlock(block, into: binding)
                     }
                 } else {
                     Text("Project unavailable")
@@ -76,6 +79,17 @@ struct ProjectsRootView: View {
                 ProjectHistoryPanel(fileName: fileName)
             }
         }
+    }
+
+    private func insertBlock(_ block: ProjectBlock, into binding: Binding<ProjectDocument>) {
+        let count = binding.wrappedValue.frontmatter.blocks.count
+        if let idx = pendingInsertionIndex {
+            binding.wrappedValue.frontmatter.blocks.insert(block, at: min(idx, count))
+        } else {
+            binding.wrappedValue.frontmatter.blocks.append(block)
+        }
+        store.editingBlockID = block.id
+        pendingInsertionIndex = nil
     }
 
     @ViewBuilder

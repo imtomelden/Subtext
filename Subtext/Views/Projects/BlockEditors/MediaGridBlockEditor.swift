@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 struct MediaGalleryBlockEditor: View {
     @Binding var block: MediaGalleryBlock
@@ -39,6 +40,9 @@ struct MediaGalleryBlockEditor: View {
         if let idx = block.items.firstIndex(where: { $0.id == itemID }) {
             HStack(alignment: .top, spacing: 8) {
                 controls
+
+                // Thumbnail — loads from public/ directory
+                MediaThumbnailView(src: block.items[idx].src)
 
                 VStack(alignment: .leading, spacing: 8) {
                     AssetPathField(path: src(at: idx), placeholder: "/images/…")
@@ -103,5 +107,33 @@ struct MediaGalleryBlockEditor: View {
             get: { block.items[safe: idx]?.location ?? "" },
             set: { v in if idx < block.items.count { block.items[idx].location = v.isEmpty ? nil : v } }
         )
+    }
+}
+
+/// Small thumbnail resolved from the repo's public/ directory.
+private struct MediaThumbnailView: View {
+    let src: String
+
+    private var imageURL: URL? {
+        guard !src.trimmingCharacters(in: .whitespaces).isEmpty else { return nil }
+        let clean = src.hasPrefix("/") ? String(src.dropFirst()) : src
+        return RepoConstants.publicDirectory.appending(path: clean, directoryHint: .notDirectory)
+    }
+
+    var body: some View {
+        Group {
+            if let url = imageURL, let nsImage = NSImage(contentsOf: url) {
+                Image(nsImage: nsImage)
+                    .resizable()
+                    .scaledToFill()
+            } else {
+                Image(systemName: "photo")
+                    .font(.system(size: 14))
+                    .foregroundStyle(.tertiary)
+            }
+        }
+        .frame(width: 40, height: 40)
+        .background(Color.secondary.opacity(0.08))
+        .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
     }
 }
