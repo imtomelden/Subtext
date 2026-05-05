@@ -53,8 +53,7 @@ struct MediaGalleryBlockEditor: View {
                         .textFieldStyle(.roundedBorder)
                     TextField("Source/Credit (optional)", text: credit(at: idx))
                         .textFieldStyle(.roundedBorder)
-                    TextField("Date (optional, YYYY-MM-DD)", text: date(at: idx))
-                        .textFieldStyle(.roundedBorder)
+                    DateField(value: date(at: idx))
                     TextField("Location (optional)", text: location(at: idx))
                         .textFieldStyle(.roundedBorder)
                 }

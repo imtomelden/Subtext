@@ -438,6 +438,18 @@ struct ProjectEditorView: View {
 
                 Spacer()
 
+                Button {
+                    NotificationCenter.default.post(name: .subtextMarkdownShowReplace, object: nil)
+                } label: {
+                    Image(systemName: "magnifyingglass")
+                        .font(.system(size: 11))
+                        .foregroundStyle(Tokens.Text.tertiary)
+                        .frame(width: 22, height: 22)
+                }
+                .buttonStyle(.plain)
+                .help("Find & Replace (⌘⌥F)")
+                .keyboardShortcut("f", modifiers: [.command, .option])
+
                 Menu {
                     Toggle("Monospaced source font", isOn: $useMonospacedSourceFont)
                 } label: {
@@ -465,10 +477,26 @@ struct ProjectEditorView: View {
             }
 
             sourceEditor
+
+            if !focusMode.isOn {
+                bodyWordCountLabel
+                    .padding(.top, 8)
+            }
         }
         .padding(.bottom, focusMode.isOn ? 0 : 28)
         .frame(maxWidth: 680, alignment: .leading)
         .frame(maxWidth: .infinity, alignment: .center)
+    }
+
+    private var bodyWordCountLabel: some View {
+        let words = document.body
+            .components(separatedBy: .whitespacesAndNewlines)
+            .filter { !$0.isEmpty }
+            .count
+        let minutes = max(1, words / 200)
+        return Text(words == 0 ? "No content yet" : "\(words) words · ~\(minutes) min read")
+            .font(.system(size: 10))
+            .foregroundStyle(Tokens.Text.tertiary)
     }
 
     private var sourceEditor: some View {

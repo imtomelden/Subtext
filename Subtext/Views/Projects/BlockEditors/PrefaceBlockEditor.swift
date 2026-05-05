@@ -24,9 +24,20 @@ struct PrefaceBlockEditor: View {
                 markdownPreview
             } else {
                 FieldRow("Text") {
-                    TextField("e.g. I wrote this piece in 2023.", text: $block.text, axis: .vertical)
-                        .textFieldStyle(.roundedBorder)
-                        .lineLimit(3...8)
+                    VStack(alignment: .trailing, spacing: 4) {
+                        TextField("e.g. I wrote this piece in 2023.", text: $block.text, axis: .vertical)
+                            .textFieldStyle(.roundedBorder)
+                            .lineLimit(3...8)
+                        let words = block.text
+                            .components(separatedBy: .whitespacesAndNewlines)
+                            .filter { !$0.isEmpty }
+                            .count
+                        if words > 0 {
+                            Text("\(words) words")
+                                .font(.caption2)
+                                .foregroundStyle(.tertiary)
+                        }
+                    }
                 }
             }
         }

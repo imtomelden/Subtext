@@ -782,6 +782,49 @@ final class CMSStore {
     }
 
 
+    func duplicateProject(_ source: ProjectDocument) async {
+        var front = source.frontmatter
+        front.draft = true
+        front.blocks = front.blocks.map { $0.duplicated() }
+
+        var candidateSlug = source.frontmatter.slug + "-copy"
+        var counter = 1
+        while projects.contains(where: { $0.frontmatter.slug == candidateSlug }) {
+            candidateSlug = "\(source.frontmatter.slug)-copy-\(counter)"
+            counter += 1
+        }
+        front.slug = candidateSlug
+
+        let fileName = "\(candidateSlug).mdx"
+        guard !projects.contains(where: { $0.fileName == fileName }) else {
+            showError("A project with that filename already exists.")
+            return
+        }
+
+        let doc = ProjectDocument(fileName: fileName, frontmatter: front, body: source.body)
+        let url = RepoConstants.projectsDirectory.appending(path: fileName, directoryHint: .notDirectory)
+        do {
+            try await fileService.writeProject(doc, to: url)
+            projects.append(doc)
+            projects.sort(by: Self.projectSortOrder)
+            originalProjects[fileName] = doc
+            markSessionChangedFile(url)
+            selectedProjectFileName = fileName
+            refreshWatchedSet()
+            watcher?.acknowledgeOwnWrite(url)
+            showToast("Duplicated \"\(source.frontmatter.title)\"")
+        } catch {
+            showError(error)
+        }
+    }
+
+    func setProjectArchived(_ fileName: String, archived: Bool) async {
+        guard let idx = projectIndexByFileName[fileName], projects.indices.contains(idx) else { return }
+        projects[idx].frontmatter.archived = archived
+        await saveProject(fileName)
+        showToast(archived ? "Archived project" : "Unarchived project")
+    }
+
     func deleteProject(_ fileName: String) async {
         let url = RepoConstants.projectsDirectory.appending(path: fileName, directoryHint: .notDirectory)
         do {
