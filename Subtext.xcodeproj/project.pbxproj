@@ -26,6 +26,7 @@
 		1F4ED3668A1BA24B5610BF84 /* Tokens.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9ADE0A2CB337F628748C18AD /* Tokens.swift */; };
 		2069283F0DDF51760CC4C798 /* SubtextModal.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0105655D24F8CE31E10E3940 /* SubtextModal.swift */; };
 		2171DCC6A123FE92CCDF7D7C /* SiteSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0AFCAA457D40486EA67887AC /* SiteSettings.swift */; };
+		278369047EAE00931594CFE3 /* TagManagerSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = F7054763ADE0CB8E1FE90B48 /* TagManagerSheet.swift */; };
 		2EA593E7114D03EF616869F3 /* PublishLogSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = F737BF2517DC3E386495BAC3 /* PublishLogSheet.swift */; };
 		3131CF5712D0797BE9151415 /* ExternalChangeBanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC8EBB99907ABC7F63C680C6 /* ExternalChangeBanner.swift */; };
 		32CA7920D7B461840835FA46 /* DraftService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69EB163027F52A20F55AEC0D /* DraftService.swift */; };
@@ -92,7 +93,6 @@
 		97297A07047E6A2EEB106911 /* NarrowLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = E023824F15BF5A58D62889D6 /* NarrowLayout.swift */; };
 		9733864EF84D9F61DC951A98 /* ExternalLinkBlockEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = D14A01A0FF716E1A116CF0F0 /* ExternalLinkBlockEditor.swift */; };
 		9A596EC56340DB0EB04E6FCB /* ProjectsListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1E200CA9BE12E6FA50EA53F /* ProjectsListView.swift */; };
-		F3A1B2C4D5E6F7A8B9C0D1E3 /* TagManagerSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3A1B2C4D5E6F7A8B9C0D1E2 /* TagManagerSheet.swift */; };
 		9D4305A91481898E1A993134 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 350B613D0ACAEA68C234FE32 /* Assets.xcassets */; };
 		A161AD61125C38BF41BAEF33 /* BlockHostView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 34CBB46AC441B3486698F330 /* BlockHostView.swift */; };
 		AB1D9DEB7009D45FF2DF881A /* AgentDebugLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 165A23F4494866B8137636D6 /* AgentDebugLog.swift */; };
@@ -249,7 +249,6 @@
 		9E8EE4161DFDAC3084FBEF11 /* QuoteBlockEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuoteBlockEditor.swift; sourceTree = "<group>"; };
 		9EBCD35FF48B26261146ADBB /* ProjectEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectEditorView.swift; sourceTree = "<group>"; };
 		A1E200CA9BE12E6FA50EA53F /* ProjectsListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectsListView.swift; sourceTree = "<group>"; };
-		F3A1B2C4D5E6F7A8B9C0D1E2 /* TagManagerSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TagManagerSheet.swift; sourceTree = "<group>"; };
 		A2FEBE6DEDCBFD8A54BFC7D6 /* MarkdownInsertToolbar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownInsertToolbar.swift; sourceTree = "<group>"; };
 		A37FFDB783D4ED15305C0AD7 /* Microinteractions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Microinteractions.swift; sourceTree = "<group>"; };
 		A519932848E25A523C61EC4D /* BlockSelection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BlockSelection.swift; sourceTree = "<group>"; };
@@ -296,6 +295,7 @@
 		EB1D66ACD3BE613059D7D83F /* EditorToolbarControls.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditorToolbarControls.swift; sourceTree = "<group>"; };
 		F03BC5E3240F540E8D390256 /* DevServerController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DevServerController.swift; sourceTree = "<group>"; };
 		F0B817EF4B6AF48FDC59CAFB /* EventLogSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EventLogSheet.swift; sourceTree = "<group>"; };
+		F7054763ADE0CB8E1FE90B48 /* TagManagerSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TagManagerSheet.swift; sourceTree = "<group>"; };
 		F737BF2517DC3E386495BAC3 /* PublishLogSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PublishLogSheet.swift; sourceTree = "<group>"; };
 		F7E981F532165E2237AC5715 /* FocusModeController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FocusModeController.swift; sourceTree = "<group>"; };
 		FA45185609FB57403FA21FD1 /* DividerBlockEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DividerBlockEditor.swift; sourceTree = "<group>"; };
@@ -415,7 +415,7 @@
 				01A8DF4C9155B4F413330A2B /* ProjectMetaHeader.swift */,
 				A1E200CA9BE12E6FA50EA53F /* ProjectsListView.swift */,
 				1475FCB48A0E8EC7D48899B8 /* ProjectsRootView.swift */,
-				F3A1B2C4D5E6F7A8B9C0D1E2 /* TagManagerSheet.swift */,
+				F7054763ADE0CB8E1FE90B48 /* TagManagerSheet.swift */,
 				29ED453249E8DBE77B747F85 /* BlockEditors */,
 			);
 			path = Projects;
@@ -832,7 +832,6 @@
 				EBE86C676D0313FE36EA78DC /* ProjectSnapshotBlockEditor.swift in Sources */,
 				C1CDBA5221FC0B4EA8452F6D /* ProjectValidation.swift in Sources */,
 				9A596EC56340DB0EB04E6FCB /* ProjectsListView.swift in Sources */,
-				F3A1B2C4D5E6F7A8B9C0D1E3 /* TagManagerSheet.swift in Sources */,
 				8C540661B18B333ECF22036B /* ProjectsRootView.swift in Sources */,
 				C85563D8A34AB0F57C60F486 /* PrototypeVisualEditor.swift in Sources */,
 				8E47CABEBE832E47345B0E9B /* PublishController.swift in Sources */,
@@ -865,6 +864,7 @@
 				08BCB5C13232C8B3177C7C7D /* Surface.swift in Sources */,
 				0F60EBA4FF9653F4F99467D2 /* TagEditor.swift in Sources */,
 				FC04E37DB4A8F8851B95B61E /* TagListBlockEditor.swift in Sources */,
+				278369047EAE00931594CFE3 /* TagManagerSheet.swift in Sources */,
 				F9F61967D43005E74A63C70F /* TerminalVisualEditor.swift in Sources */,
 				83063F740719AE35EED350A8 /* Theme.swift in Sources */,
 				FC85D724F0D81EACA310831C /* TicketVisualEditor.swift in Sources */,
