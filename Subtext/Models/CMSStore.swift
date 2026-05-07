@@ -119,6 +119,7 @@ final class CMSStore {
     let backupService = BackupService()
     let draftService = DraftService()
     let repoSettings = RepoSettingsService()
+    let microblogStore = MicroblogStore()
     let eventLog = EventLog()
     private var watcher: ContentWatcher?
     private var autosaveTask: Task<Void, Never>?
@@ -548,6 +549,15 @@ final class CMSStore {
             showError(error)
             savePipelineState = .error(target: "splash", message: error.localizedDescription)
             pipelineTelemetry.saveFailures += 1
+            return
+        }
+        if let mb = siteSettings.microblog, mb.enabled, !mb.pageURL.isEmpty {
+            Task {
+                await microblogStore.pushSplash(splashContent, settings: mb)
+                if case .failed(let msg) = microblogStore.syncState {
+                    showError("Micro.blog push failed: \(msg)")
+                }
+            }
         }
     }
 

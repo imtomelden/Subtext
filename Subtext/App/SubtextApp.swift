@@ -28,6 +28,7 @@ struct SubtextApp: App {
         WindowGroup("Subtext", id: "subtext-main") {
             ContentView()
                 .environment(store)
+                .environment(store.microblogStore)
                 .environment(devServer)
                 .environment(git)
                 .environment(publish)

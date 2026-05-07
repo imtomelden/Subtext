@@ -2,6 +2,7 @@ import SwiftUI
 
 struct SiteSettingsView: View {
     @Environment(CMSStore.self) private var store
+    @Environment(MicroblogStore.self) private var microblogStore
     @Environment(DevServerController.self) private var devServer
     @Environment(Theme.self) private var theme
     @Environment(\.openWindow) private var openWindow
@@ -10,6 +11,8 @@ struct SiteSettingsView: View {
     @State private var activeModal: ActiveModal?
     @State private var repoRootPath: String = RepoConstants.repoRoot.path(percentEncoded: false)
     @State private var repoSelectionError: String?
+    @State private var showMigrationConfirmation = false
+    @State private var migrationError: String?
 
     var body: some View {
         @Bindable var store = store
@@ -22,6 +25,7 @@ struct SiteSettingsView: View {
                     accentBackgroundGroup
                     appearanceGroup
                     visibilityGroup
+                    microblogGroup
                     websiteRepoGroup
                     siteHealthGroup
                     telemetryGroup
@@ -165,6 +169,109 @@ struct SiteSettingsView: View {
                     .toggleStyle(.switch)
                     .tint(Color.subtextAccent)
             }
+        }
+    }
+
+    @ViewBuilder
+    private var microblogGroup: some View {
+        @Bindable var store = store
+
+        let enabledBinding = Binding<Bool>(
+            get: { store.siteSettings.microblog?.enabled ?? false },
+            set: { enabled in
+                if store.siteSettings.microblog == nil {
+                    store.siteSettings.microblog = MicroblogSettings(pageURL: "", enabled: enabled)
+                } else {
+                    store.siteSettings.microblog?.enabled = enabled
+                }
+            }
+        )
+        let pageURLBinding = Binding<String>(
+            get: { store.siteSettings.microblog?.pageURL ?? "" },
+            set: { store.siteSettings.microblog?.pageURL = $0 }
+        )
+
+        SettingsGroup(title: "MICRO.BLOG") {
+            SettingsRow(label: "Use Micro.blog for home content", hint: "Pushes splash.json to Micro.blog on each save. Site reads from Micro.blog via SSR.") {
+                Toggle("", isOn: enabledBinding)
+                    .labelsHidden()
+                    .toggleStyle(.switch)
+                    .tint(Color.subtextAccent)
+            }
+
+            SettingsRow(label: "Page URL", hint: "Set automatically when you push for the first time.") {
+                TextField("https://micro.blog/yourname/blagsite-home", text: pageURLBinding)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 12, design: .monospaced))
+                    .padding(6)
+                    .background(
+                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                            .fill(Tokens.Background.sunken)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                    .strokeBorder(Tokens.Border.default, lineWidth: 1)
+                            )
+                    )
+                    .frame(maxWidth: 300)
+            }
+
+            SettingsRow(label: "API Token") {
+                MicroblogTokenField()
+            }
+
+            SettingsRow(label: "Initial push", hint: "Creates the Micro.blog page and stores its URL above.", isLast: true) {
+                HStack(spacing: 8) {
+                    Button("Push current home content…") {
+                        showMigrationConfirmation = true
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(microblogStore.syncState == .pushing)
+
+                    if case .pushing = microblogStore.syncState {
+                        ProgressView().controlSize(.small)
+                    } else if case .success = microblogStore.syncState {
+                        Label("Pushed", systemImage: "checkmark.circle.fill")
+                            .font(.caption)
+                            .foregroundStyle(.green)
+                    } else if case .failed(let msg) = microblogStore.syncState {
+                        Label(msg, systemImage: "exclamationmark.triangle.fill")
+                            .font(.caption)
+                            .foregroundStyle(.red)
+                            .lineLimit(2)
+                    }
+                }
+            }
+        }
+        .confirmationDialog(
+            "Push home content to Micro.blog?",
+            isPresented: $showMigrationConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Push") { Task { await runMigration() } }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This creates a new Micro.blog page with the current splash.json content and saves its URL to settings.")
+        }
+        .alert("Migration failed", isPresented: Binding(
+            get: { migrationError != nil },
+            set: { if !$0 { migrationError = nil } }
+        ), presenting: migrationError) { _ in
+            Button("OK", role: .cancel) { migrationError = nil }
+        } message: { msg in
+            Text(msg)
+        }
+    }
+
+    private func runMigration() async {
+        do {
+            let url = try await microblogStore.createSplashPage(
+                store.splashContent,
+                slug: "blagsite-home"
+            )
+            store.siteSettings.microblog?.pageURL = url
+            await store.saveSite()
+        } catch {
+            migrationError = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
         }
     }
 
@@ -608,6 +715,52 @@ private struct SettingsRow<Control: View>: View {
 
             if !isLast {
                 Rectangle().fill(Tokens.Border.subtle).frame(height: 1)
+            }
+        }
+    }
+}
+
+// MARK: - MicroblogTokenField
+
+private struct MicroblogTokenField: View {
+    @Environment(MicroblogStore.self) private var microblogStore
+    @State private var isEditing = false
+    @State private var tokenDraft = ""
+
+    var body: some View {
+        HStack(spacing: 8) {
+            if isEditing {
+                SecureField("Paste token…", text: $tokenDraft)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(width: 220)
+                Button("Save") {
+                    guard !tokenDraft.isEmpty else { return }
+                    try? microblogStore.saveToken(tokenDraft)
+                    tokenDraft = ""
+                    isEditing = false
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+                Button("Cancel") {
+                    tokenDraft = ""
+                    isEditing = false
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+            } else if microblogStore.hasToken {
+                Label("Token stored in Keychain", systemImage: "key.fill")
+                    .font(.caption)
+                    .foregroundStyle(Tokens.Text.tertiary)
+                Button("Replace…") { isEditing = true }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+            } else {
+                Text("No token stored")
+                    .font(.caption)
+                    .foregroundStyle(Tokens.Text.tertiary)
+                Button("Add token…") { isEditing = true }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.small)
             }
         }
     }
