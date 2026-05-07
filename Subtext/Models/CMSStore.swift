@@ -114,6 +114,9 @@ final class CMSStore {
     /// can trust the safety net.
     private(set) var lastDraftPersistedAt: Date?
 
+    /// Tracks Micro.blog freshness checks for Home content.
+    private(set) var remoteSplashCheckState: RemoteSplashCheckState = .init()
+
     // Services
     let fileService = FileService()
     let backupService = BackupService()
@@ -252,6 +255,7 @@ final class CMSStore {
             self.startAutosave()
             await self.loadRepoPreferences()
             await self.loadDraftRecovery()
+            await self.checkRemoteSplashIfEnabled(reason: .load)
             recordUXMetric("loadAll.success", started: started)
         } catch {
             self.loadState = .failed(error.localizedDescription)
@@ -332,6 +336,20 @@ final class CMSStore {
             case site
             case project(fileName: String)
         }
+    }
+
+    struct RemoteSplashCheckState: Equatable {
+        enum TriggerReason: String, Equatable {
+            case load
+            case tabFocus
+            case postSave
+            case manual
+        }
+
+        var lastCheckedAt: Date?
+        var hasRemoteChange: Bool = false
+        var pendingRemoteSplash: SplashContent?
+        var isChecking: Bool = false
     }
 
     /// Returns `true` when the file on disk has been modified since we
@@ -559,6 +577,7 @@ final class CMSStore {
                 }
             }
         }
+        await checkRemoteSplashIfEnabled(reason: .postSave)
     }
 
     func saveSite() async {
@@ -669,6 +688,77 @@ final class CMSStore {
         splashContent = originalSplash
         editingSectionID = nil
         editingCTAID = nil
+    }
+
+    // MARK: - Remote Home sync (Micro.blog pull)
+
+    private func microblogSettingsForFetch() -> MicroblogSettings? {
+        guard let mb = siteSettings.microblog, mb.enabled, !mb.pageURL.isEmpty else { return nil }
+        guard microblogStore.hasToken else { return nil }
+        return mb
+    }
+
+    var canCheckRemoteSplash: Bool {
+        microblogSettingsForFetch() != nil
+    }
+
+    private func stageRemoteSplashChange(_ remote: SplashContent) {
+        remoteSplashCheckState.pendingRemoteSplash = remote
+        remoteSplashCheckState.hasRemoteChange = true
+    }
+
+    func checkRemoteSplashIfEnabled(reason: RemoteSplashCheckState.TriggerReason) async {
+        guard !remoteSplashCheckState.isChecking else { return }
+        guard let settings = microblogSettingsForFetch() else {
+            remoteSplashCheckState.hasRemoteChange = false
+            remoteSplashCheckState.pendingRemoteSplash = nil
+            return
+        }
+
+        remoteSplashCheckState.isChecking = true
+        defer {
+            remoteSplashCheckState.isChecking = false
+            remoteSplashCheckState.lastCheckedAt = Date()
+        }
+
+        do {
+            let remote = try await microblogStore.fetchSplash(settings: settings)
+            let changedFromBaseline = remote != originalSplash
+            let differsFromEditor = remote != splashContent
+            if changedFromBaseline || differsFromEditor {
+                stageRemoteSplashChange(remote)
+            } else {
+                remoteSplashCheckState.pendingRemoteSplash = nil
+                remoteSplashCheckState.hasRemoteChange = false
+            }
+            recordUXEvent(
+                "remoteSplash.check.\(reason.rawValue)",
+                metadata: remoteSplashCheckState.hasRemoteChange ? "changed" : "unchanged"
+            )
+        } catch {
+            recordUXEvent("remoteSplash.check.failed", metadata: error.localizedDescription)
+        }
+    }
+
+    func clearRemoteSplashNotice() {
+        remoteSplashCheckState.hasRemoteChange = false
+        remoteSplashCheckState.pendingRemoteSplash = nil
+    }
+
+    var shouldPromptBeforeApplyingRemoteSplash: Bool {
+        isSplashDirty
+    }
+
+    func applyPendingRemoteSplash() {
+        guard let remote = remoteSplashCheckState.pendingRemoteSplash else { return }
+        splashContent = remote
+        originalSplash = remote
+        clearRemoteSplashNotice()
+        showToast("Loaded latest Home content from Micro.blog")
+    }
+
+    func applyRemoteSplashForPreview(_ remote: SplashContent) {
+        stageRemoteSplashChange(remote)
     }
 
     func discardSite() {

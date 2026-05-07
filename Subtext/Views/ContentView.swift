@@ -16,6 +16,7 @@ struct ContentView: View {
     @State private var lastPaletteModalMode: CommandPalette.Mode?
     @State private var columnVisibility: NavigationSplitViewVisibility = .automatic
     @State private var repoSelectionError: String?
+    @State private var showRemotePullConflict = false
     @Environment(FocusModeController.self) private var focusMode
     @Environment(RecentsStore.self) private var recents
     @State private var detailWidth: CGFloat?
@@ -158,9 +159,12 @@ struct ContentView: View {
                let restored = SidebarTab(rawValue: raw) {
                 tab = restored
             }
+            Task { await store.checkRemoteSplashIfEnabled(reason: .load) }
         }
         .onChange(of: tab) { _, newTab in
             store.recordSidebarTab(newTab)
+            guard newTab == .home else { return }
+            Task { await store.checkRemoteSplashIfEnabled(reason: .tabFocus) }
         }
     }
 
@@ -275,6 +279,7 @@ struct ContentView: View {
                 }
                 ExternalChangeBanner(
                     changes: store.externalChanges,
+                    hasRemoteSplashChange: tab == .home && store.remoteSplashCheckState.hasRemoteChange,
                     onReloadAll: {
                         Task { await store.reloadAllExternalChanges() }
                     },
@@ -282,6 +287,16 @@ struct ContentView: View {
                         for url in store.externalChanges {
                             store.dismissExternalChange(url)
                         }
+                    },
+                    onApplyRemoteSplash: {
+                        if store.shouldPromptBeforeApplyingRemoteSplash {
+                            showRemotePullConflict = true
+                        } else {
+                            store.applyPendingRemoteSplash()
+                        }
+                    },
+                    onDismissRemoteSplash: {
+                        store.clearRemoteSplashNotice()
                     }
                 )
             }
@@ -321,6 +336,14 @@ struct ContentView: View {
             Text(
                 "\(conflict.displayName) was modified outside Subtext after you opened it. Reload discards your in-memory edits. Overwrite keeps your edits and replaces the file on disk."
             )
+        }
+        .alert("Replace unsaved Home edits?", isPresented: $showRemotePullConflict) {
+            Button("Keep local edits", role: .cancel) {}
+            Button("Pull remote version", role: .destructive) {
+                store.applyPendingRemoteSplash()
+            }
+        } message: {
+            Text("Micro.blog has newer Home content. Pulling will replace your current unsaved Home edits in Subtext.")
         }
     }
 

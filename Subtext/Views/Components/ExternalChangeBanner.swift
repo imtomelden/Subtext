@@ -9,49 +9,93 @@ import SwiftUI
 /// Hidden when there are no pending external changes.
 struct ExternalChangeBanner: View {
     let changes: Set<URL>
+    var hasRemoteSplashChange: Bool = false
     var onReloadAll: () -> Void
     var onDismissAll: () -> Void
+    var onApplyRemoteSplash: () -> Void = {}
+    var onDismissRemoteSplash: () -> Void = {}
 
     var body: some View {
-        if changes.isEmpty {
+        if changes.isEmpty && !hasRemoteSplashChange {
             EmptyView()
         } else {
-            HStack(alignment: .firstTextBaseline, spacing: 10) {
-                Image(systemName: "arrow.triangle.2.circlepath.circle.fill")
-                    .foregroundStyle(Color.subtextWarning)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(headline)
-                        .font(.callout.weight(.medium))
-                    Text(detail)
-                        .font(.caption)
+            VStack(spacing: 8) {
+                if !changes.isEmpty {
+                    HStack(alignment: .firstTextBaseline, spacing: 10) {
+                        Image(systemName: "arrow.triangle.2.circlepath.circle.fill")
+                            .foregroundStyle(Color.subtextWarning)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(headline)
+                                .font(.callout.weight(.medium))
+                            Text(detail)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(2)
+                                .truncationMode(.middle)
+                        }
+                        Spacer(minLength: 12)
+
+                        Button(action: onReloadAll) {
+                            Label("Reload", systemImage: "arrow.clockwise")
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(Color.subtextAccent)
+
+                        Button(action: onDismissAll) {
+                            Image(systemName: "xmark")
+                        }
+                        .buttonStyle(.borderless)
                         .foregroundStyle(.secondary)
-                        .lineLimit(2)
-                        .truncationMode(.middle)
+                        .help("Keep the in-memory version")
+                        .accessibilityLabel("Dismiss external change notice")
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 10)
+                    .background(
+                        GlassSurface(prominence: .interactive, cornerRadius: 12) {
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .fill(Color.subtextWarning.opacity(0.16))
+                        }
+                    )
                 }
-                Spacer(minLength: 12)
 
-                Button(action: onReloadAll) {
-                    Label("Reload", systemImage: "arrow.clockwise")
-                }
-                .buttonStyle(.borderedProminent)
-                .tint(Color.subtextAccent)
+                if hasRemoteSplashChange {
+                    HStack(alignment: .firstTextBaseline, spacing: 10) {
+                        Image(systemName: "icloud.and.arrow.down.fill")
+                            .foregroundStyle(Color.subtextAccent)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Remote Home content changed in Micro.blog")
+                                .font(.callout.weight(.medium))
+                            Text("Pull latest content into the editor, or keep your local version.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer(minLength: 12)
 
-                Button(action: onDismissAll) {
-                    Image(systemName: "xmark")
+                        Button(action: onApplyRemoteSplash) {
+                            Label("Pull latest", systemImage: "arrow.down.doc")
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(Color.subtextAccent)
+
+                        Button(action: onDismissRemoteSplash) {
+                            Image(systemName: "xmark")
+                        }
+                        .buttonStyle(.borderless)
+                        .foregroundStyle(.secondary)
+                        .help("Keep local content")
+                        .accessibilityLabel("Dismiss remote change notice")
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 10)
+                    .background(
+                        GlassSurface(prominence: .interactive, cornerRadius: 12) {
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .fill(Color.subtextAccent.opacity(0.16))
+                        }
+                    )
                 }
-                .buttonStyle(.borderless)
-                .foregroundStyle(.secondary)
-                .help("Keep the in-memory version")
-                .accessibilityLabel("Dismiss external change notice")
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 10)
-            .background(
-                GlassSurface(prominence: .interactive, cornerRadius: 12) {
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .fill(Color.subtextWarning.opacity(0.16))
-                }
-            )
             .padding(.horizontal, 18)
             .padding(.top, 10)
             .transition(.opacity.combined(with: .move(edge: .top)))

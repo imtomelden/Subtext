@@ -97,6 +97,7 @@
 		9D4305A91481898E1A993134 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 350B613D0ACAEA68C234FE32 /* Assets.xcassets */; };
 		A161AD61125C38BF41BAEF33 /* BlockHostView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 34CBB46AC441B3486698F330 /* BlockHostView.swift */; };
 		A48E2842024022D96D2C0B0F /* KeychainService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8EE930FD4E44EB254CDFE9E7 /* KeychainService.swift */; };
+		A6CB6444F0C78AF9E93714C2 /* CMSStoreRemoteSyncTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0C2CE17F626FD023EE5FD6F4 /* CMSStoreRemoteSyncTests.swift */; };
 		AB1D9DEB7009D45FF2DF881A /* AgentDebugLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 165A23F4494866B8137636D6 /* AgentDebugLog.swift */; };
 		AB84AEBF54B834F7E58613CF /* MarkdownTextStorage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3DF66EFA84AEDA39E57D0CC0 /* MarkdownTextStorage.swift */; };
 		B018119CAC57A93A4A7B60BC /* GitController.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC8CAB53EC21F874F2935A6B /* GitController.swift */; };
@@ -171,6 +172,7 @@
 		09E80B44837548643D42CAC1 /* CommandPalette.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommandPalette.swift; sourceTree = "<group>"; };
 		0AFCAA457D40486EA67887AC /* SiteSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SiteSettings.swift; sourceTree = "<group>"; };
 		0B82CE64B895FD01A74D780C /* HistoryDiffSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryDiffSheet.swift; sourceTree = "<group>"; };
+		0C2CE17F626FD023EE5FD6F4 /* CMSStoreRemoteSyncTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CMSStoreRemoteSyncTests.swift; sourceTree = "<group>"; };
 		0EAA524EED1F8EF4A377E33B /* SubtextApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SubtextApp.swift; sourceTree = "<group>"; };
 		0F68FB7E3BA28B6D4A942FA6 /* QuickTipsBanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuickTipsBanner.swift; sourceTree = "<group>"; };
 		1064AB294B2BFEFE26CE8F2E /* MediaGridBlockEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaGridBlockEditor.swift; sourceTree = "<group>"; };
@@ -591,6 +593,7 @@
 			isa = PBXGroup;
 			children = (
 				36E6BA12A93097559F941079 /* BuildServiceTests.swift */,
+				0C2CE17F626FD023EE5FD6F4 /* CMSStoreRemoteSyncTests.swift */,
 				65A96BE9C313804FB9CEFA43 /* DevServerControllerTests.swift */,
 				728E535F36481D545A639CCC /* MarkdownInlineFormatterTests.swift */,
 				E920CDB32B8D8BA4F1FD045B /* RepoValidationTests.swift */,
@@ -743,6 +746,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				B8BE73B5CF060B75B2D6A0D1 /* BuildServiceTests.swift in Sources */,
+				A6CB6444F0C78AF9E93714C2 /* CMSStoreRemoteSyncTests.swift in Sources */,
 				E88992515FA0DC05E4591881 /* DevServerControllerTests.swift in Sources */,
 				CB1D97A8AABB82A3258127BD /* MarkdownInlineFormatterTests.swift in Sources */,
 				5CCC8062B110393FD810FF36 /* RepoValidationTests.swift in Sources */,
