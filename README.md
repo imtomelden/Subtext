@@ -9,13 +9,33 @@ convenience, but the app is not locked to a single path.
 
 Subtext reads and writes:
 
-- `src/content/splash.json` — home page sections and CTAs
-- `src/content/site.json` — top-level site toggle
+- `src/content/splash.json` — home page sections and CTAs (also published to Micro.blog — see below)
+- `src/content/site.json` — top-level site toggle + Micro.blog settings
 - `src/content/projects/*.mdx` — project case studies (YAML frontmatter + body)
 
 When you close the app/window, Subtext creates timestamped backups for files
 changed in that session under `<repo>/.subtext-backups/`. Every file also
 exposes per-file version history with restore (and restores are backup-protected).
+
+## Micro.blog CMS
+
+Home page content can be published live without a Vercel redeploy. When the
+Micro.blog integration is enabled, saving the home page in Subtext:
+
+1. Writes `splash.json` to disk as usual (local fallback / git history)
+2. Pushes the same content to a Micro.blog page via the Micropub API
+3. The live site reads from Micro.blog at request time (SSR with 2-min CDN cache)
+
+**First-time setup:**
+
+1. Go to **Settings → Micro.blog**
+2. Add your API token (from [micro.blog/account/apps](https://micro.blog/account/apps)) — stored in macOS Keychain
+3. Enable "Use Micro.blog for home content"
+4. Click **"Push current home content…"** — this creates the Micro.blog page and auto-fills the page URL
+5. Add `MICROBLOG_TOKEN` and `MICROBLOG_PAGE_URL` (the filled-in URL) to your Vercel project's environment variables
+6. Deploy once — after that, `⌘S` in Subtext publishes content changes instantly
+
+The API token lives only in Keychain and is never written to disk or committed to git.
 
 ## Requirements
 
