@@ -50,6 +50,7 @@ final class CMSStore {
 
     // Domain
     var splashContent: SplashContent = .empty
+    var homeMarkdownSource: String = ""
     var projects: [ProjectDocument] = [] {
         didSet { rebuildProjectIndex() }
     }
@@ -67,6 +68,7 @@ final class CMSStore {
     private(set) var pipelineTelemetry: PipelineTelemetry = .init()
     var toast: ToastMessage?
     var lastError: String?
+    var homeMarkdownError: String?
 
     /// Last site-health audit issue count (orphans + broken refs + SEO); updated from `SiteHealthSheet`.
     private(set) var siteHealthOpenIssueTotal: Int = 0
@@ -140,6 +142,7 @@ final class CMSStore {
     private static let siteHealthIssuesDefaultsKey = "SubtextLastSiteHealthIssueTotal"
     private static let perfLogger = Logger(subsystem: "com.subtext.app", category: "ux.perf")
     private let metricClock = ContinuousClock()
+    private let homeMarkdownCompiler = HomeMarkdownCompiler()
 
     init() {
         siteHealthOpenIssueTotal = UserDefaults.standard.integer(forKey: Self.siteHealthIssuesDefaultsKey)
@@ -244,6 +247,7 @@ final class CMSStore {
 
             self.splashContent = splash
             self.originalSplash = splash
+            self.syncHomeMarkdownFromSplash()
             self.siteSettings = site
             self.originalSite = site
             self.projects = projects.sorted(by: Self.projectSortOrder)
@@ -465,7 +469,10 @@ final class CMSStore {
     /// edits as unsaved and can ⌘S to persist or ⌘⇧Z to discard.
     func acceptRecovery() {
         guard let recovery = pendingRecovery else { return }
-        if let splash = recovery.splash { splashContent = splash }
+        if let splash = recovery.splash {
+            splashContent = splash
+            syncHomeMarkdownFromSplash()
+        }
         if let site = recovery.site { siteSettings = site }
         for doc in recovery.projects {
             if let idx = projects.firstIndex(where: { $0.fileName == doc.fileName }) {
@@ -546,6 +553,11 @@ final class CMSStore {
     }
 
     private func performSaveSplash(force: Bool) async {
+        guard parseHomeMarkdownIntoSplash() else {
+            savePipelineState = .error(target: "splash", message: homeMarkdownError ?? "Invalid Home markdown")
+            pipelineTelemetry.saveFailures += 1
+            return
+        }
         let url = RepoConstants.splashFile
         beginSaveRequest(target: "splash")
         savePipelineState = .running(target: "splash")
@@ -688,6 +700,7 @@ final class CMSStore {
         splashContent = originalSplash
         editingSectionID = nil
         editingCTAID = nil
+        syncHomeMarkdownFromSplash()
     }
 
     // MARK: - Remote Home sync (Micro.blog pull)
@@ -753,6 +766,7 @@ final class CMSStore {
         guard let remote = remoteSplashCheckState.pendingRemoteSplash else { return }
         splashContent = remote
         originalSplash = remote
+        syncHomeMarkdownFromSplash()
         clearRemoteSplashNotice()
         showToast("Loaded latest Home content from Micro.blog")
     }
@@ -991,11 +1005,81 @@ final class CMSStore {
             let splash = try await fileService.readSplash()
             splashContent = splash
             originalSplash = splash
+            syncHomeMarkdownFromSplash()
             watcher?.acknowledgeOwnWrite(RepoConstants.splashFile)
             externalChanges.remove(RepoConstants.splashFile)
         } catch {
             showError(error)
         }
+    }
+
+    // MARK: - Home markdown canonical state
+
+    func syncHomeMarkdownFromSplash() {
+        do {
+            homeMarkdownSource = try homeMarkdownCompiler.splashToMarkdown(splashContent)
+            homeMarkdownError = nil
+        } catch {
+            homeMarkdownError = error.localizedDescription
+        }
+    }
+
+    func updateHomeMarkdownSource(_ source: String) {
+        homeMarkdownSource = source
+        _ = parseHomeMarkdownIntoSplash()
+    }
+
+    @discardableResult
+    private func parseHomeMarkdownIntoSplash() -> Bool {
+        do {
+            let parsed = try homeMarkdownCompiler.markdownToSplash(homeMarkdownSource)
+            splashContent = mergeParsedHomeMarkdown(parsed, existing: splashContent)
+            homeMarkdownError = nil
+            return true
+        } catch {
+            homeMarkdownError = error.localizedDescription
+            return false
+        }
+    }
+
+    private func mergeParsedHomeMarkdown(_ parsed: SplashContent, existing: SplashContent) -> SplashContent {
+        let existingByID = Dictionary(uniqueKeysWithValues: existing.sections.map { ($0.id, $0) })
+        let existingByHeading = Dictionary(uniqueKeysWithValues: existing.sections.map { ($0.heading.lowercased(), $0) })
+
+        let mergedSections = parsed.sections.enumerated().map { index, section -> SplashSection in
+            let prior = existingByID[section.id]
+                ?? existingByHeading[section.heading.lowercased()]
+                ?? (existing.sections.indices.contains(index) ? existing.sections[index] : nil)
+            guard let prior else { return section }
+            return SplashSection(
+                id: prior.id,
+                heading: section.heading,
+                subtitle: section.subtitle,
+                bodyParagraphs: section.bodyParagraphs,
+                imagePosition: prior.imagePosition,
+                isHero: prior.isHero,
+                visual: prior.visual,
+                transition: prior.transition,
+                visualAlternates: prior.visualAlternates
+            )
+        }
+
+        let existingCTAsByID = Dictionary(uniqueKeysWithValues: existing.ctas.map { ($0.id, $0) })
+        let existingCTAsByName = Dictionary(uniqueKeysWithValues: existing.ctas.map { ($0.name.lowercased(), $0) })
+        let mergedCTAs = parsed.ctas.enumerated().map { index, cta -> SplashCTA in
+            let prior = existingCTAsByID[cta.id]
+                ?? existingCTAsByName[cta.name.lowercased()]
+                ?? (existing.ctas.indices.contains(index) ? existing.ctas[index] : nil)
+            guard let prior else { return cta }
+            return SplashCTA(
+                id: prior.id,
+                name: cta.name,
+                heading: cta.heading,
+                subtitle: cta.subtitle,
+                href: cta.href
+            )
+        }
+        return SplashContent(sections: mergedSections, ctas: mergedCTAs)
     }
 
     func reloadSite() async {
@@ -1268,4 +1352,411 @@ struct ToastMessage: Identifiable, Equatable, Sendable {
     let id: UUID = UUID()
     var text: String
     var kind: Kind
+}
+
+struct HomeMarkdownCompiler {
+    enum ParseError: LocalizedError, Equatable {
+        case missingSectionBlocks
+        case malformedSectionMarker(line: Int)
+        case missingSectionHeading(id: String)
+        case missingCTALink(id: String)
+        case malformedLegacySectionJSON(index: Int)
+        case malformedLegacyCTAJSON(index: Int)
+
+        var errorDescription: String? {
+            switch self {
+            case .missingSectionBlocks:
+                "Home markdown is missing section headings."
+            case .malformedSectionMarker(let line):
+                "Malformed section/CTA marker near line \(line)."
+            case .missingSectionHeading(let id):
+                "Section `\(id)` is missing a `### Heading` line."
+            case .missingCTALink(let id):
+                "CTA `\(id)` is missing a markdown link like `[Projects](/projects)`."
+            case .malformedLegacySectionJSON(let index):
+                "Legacy section block #\(index + 1) has invalid JSON."
+            case .malformedLegacyCTAJSON(let index):
+                "Legacy CTA block #\(index + 1) has invalid JSON."
+            }
+        }
+    }
+
+    private let decoder: JSONDecoder
+
+    init() {
+        self.decoder = JSONDecoder()
+    }
+
+    func splashToMarkdown(_ splash: SplashContent) throws -> String {
+        var lines: [String] = [
+            "# Home",
+            "",
+            "Write plain markdown here. Subtext compiles this to `splash.json` on save.",
+            ""
+        ]
+
+        for section in splash.sections {
+            lines.append("## \(section.heading)")
+            if let subtitle = section.subtitle?.trimmingCharacters(in: .whitespacesAndNewlines),
+               !subtitle.isEmpty {
+                lines.append("> \(subtitle)")
+            }
+            let filteredParagraphs = section.bodyParagraphs.filter { paragraph in
+                let trimmed = paragraph.trimmingCharacters(in: .whitespacesAndNewlines)
+                return trimmed != "## CTAs" && trimmed != "## Sections"
+            }
+            if !filteredParagraphs.isEmpty {
+                if section.subtitle != nil { lines.append("") }
+                lines.append(filteredParagraphs.joined(separator: "\n\n"))
+            }
+            lines.append("")
+        }
+
+        lines.append("## CTAs")
+        lines.append("")
+        for cta in splash.ctas {
+            lines.append("### \(cta.name)")
+            lines.append("[\(cta.heading)](\(cta.href))")
+            if !cta.subtitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                lines.append(cta.subtitle)
+            }
+            lines.append("")
+        }
+
+        return lines.joined(separator: "\n")
+            .trimmingCharacters(in: .whitespacesAndNewlines) + "\n"
+    }
+
+    func markdownToSplash(_ markdown: String) throws -> SplashContent {
+        if usesLegacyFencedJSON(markdown) {
+            return try parseLegacyFencedJSON(markdown)
+        }
+        if !markdown.contains("## Section:") && !markdown.contains("## CTA:") {
+            return try parseNaturalMarkdown(markdown)
+        }
+        return try parseReadableMarkdown(markdown)
+    }
+
+    private func parseNaturalMarkdown(_ markdown: String) throws -> SplashContent {
+        let lines = markdown.replacingOccurrences(of: "\r\n", with: "\n").components(separatedBy: "\n")
+        let ctaDivider = lines.firstIndex { $0.trimmingCharacters(in: .whitespaces) == "## CTAs" }
+        let sectionLines = ctaDivider.map { Array(lines[..<$0]) } ?? lines
+        let ctaLines = ctaDivider.map { Array(lines[$0...]) } ?? []
+
+        let sections = try parseNaturalSections(sectionLines)
+        guard !sections.isEmpty else { throw ParseError.missingSectionBlocks }
+        let ctas = try parseNaturalCTAs(ctaLines)
+        return SplashContent(sections: sections, ctas: ctas)
+    }
+
+    private func parseNaturalSections(_ lines: [String]) throws -> [SplashSection] {
+        var sections: [SplashSection] = []
+        var currentHeading: String?
+        var buffer: [String] = []
+
+        func flushCurrent() {
+            guard let heading = currentHeading else { return }
+            let subtitleLines = buffer.compactMap { raw -> String? in
+                let trimmed = raw.trimmingCharacters(in: .whitespaces)
+                guard trimmed.hasPrefix("> ") else { return nil }
+                return String(trimmed.dropFirst(2)).trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+            let subtitle = subtitleLines.isEmpty ? nil : subtitleLines.joined(separator: " ")
+            let bodyLines = buffer.filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("> ") }
+            let bodyParagraphs = splitParagraphs(bodyLines)
+            sections.append(
+                SplashSection(
+                    id: slugify(heading),
+                    heading: heading,
+                    subtitle: subtitle,
+                    bodyParagraphs: bodyParagraphs,
+                    imagePosition: .left,
+                    isHero: false,
+                    visual: .empty(of: .photo),
+                    transition: nil,
+                    visualAlternates: nil
+                )
+            )
+        }
+
+        for line in lines {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            if trimmed.hasPrefix("## ") && trimmed != "## CTAs" {
+                if currentHeading != nil { flushCurrent(); buffer.removeAll(keepingCapacity: true) }
+                currentHeading = String(trimmed.dropFirst(3)).trimmingCharacters(in: .whitespacesAndNewlines)
+                continue
+            }
+            if currentHeading != nil { buffer.append(line) }
+        }
+        if currentHeading != nil { flushCurrent() }
+        return sections
+    }
+
+    private func parseNaturalCTAs(_ lines: [String]) throws -> [SplashCTA] {
+        var blocks: [(String, [String])] = []
+        var currentName: String?
+        var buffer: [String] = []
+
+        func flushCurrent() {
+            guard let currentName else { return }
+            blocks.append((currentName, buffer))
+            buffer.removeAll(keepingCapacity: true)
+        }
+
+        for raw in lines {
+            let line = raw.trimmingCharacters(in: .whitespaces)
+            if line.hasPrefix("### ") {
+                if currentName != nil { flushCurrent() }
+                currentName = String(line.dropFirst(4)).trimmingCharacters(in: .whitespacesAndNewlines)
+                continue
+            }
+            if currentName != nil { buffer.append(raw) }
+        }
+        if currentName != nil { flushCurrent() }
+
+        return try blocks.map { name, body in
+            var heading = ""
+            var href = ""
+            var subtitleLines: [String] = []
+            for raw in body {
+                let trimmed = raw.trimmingCharacters(in: .whitespaces)
+                if trimmed.isEmpty { continue }
+                if heading.isEmpty, let (h, url) = parseMarkdownLink(trimmed) {
+                    heading = h
+                    href = url
+                } else {
+                    subtitleLines.append(raw)
+                }
+            }
+            if heading.isEmpty || href.isEmpty {
+                throw ParseError.missingCTALink(id: name)
+            }
+            return SplashCTA(
+                id: "cta-\(slugify(name))",
+                name: name,
+                heading: heading,
+                subtitle: subtitleLines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines),
+                href: href
+            )
+        }
+    }
+
+    private struct Block {
+        enum Kind { case section, cta }
+        let kind: Kind
+        let id: String
+        let lines: [String]
+    }
+
+    private func parseReadableMarkdown(_ markdown: String) throws -> SplashContent {
+        let blocks = try captureReadableBlocks(in: markdown)
+        let sectionBlocks = blocks.filter { $0.kind == .section }
+        guard !sectionBlocks.isEmpty else {
+            throw ParseError.missingSectionBlocks
+        }
+
+        let ctaBlocks = blocks.filter { $0.kind == .cta }
+        let sections = try sectionBlocks.map(parseSection)
+        let ctas = try ctaBlocks.map(parseCTA)
+        return SplashContent(sections: sections, ctas: ctas)
+    }
+
+    private func parseSection(_ block: Block) throws -> SplashSection {
+        let heading = block.lines
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .first(where: { $0.hasPrefix("### ") })
+            .map { String($0.dropFirst(4)).trimmingCharacters(in: .whitespacesAndNewlines) } ?? ""
+        guard !heading.isEmpty else {
+            throw ParseError.missingSectionHeading(id: block.id)
+        }
+
+        let subtitleLines = block.lines.compactMap { raw -> String? in
+            let trimmed = raw.trimmingCharacters(in: .whitespaces)
+            guard trimmed.hasPrefix("> ") else { return nil }
+            return String(trimmed.dropFirst(2)).trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        let subtitle = subtitleLines.isEmpty ? nil : subtitleLines.joined(separator: " ")
+
+        var bodyLines: [String] = []
+        for raw in block.lines {
+            let trimmed = raw.trimmingCharacters(in: .whitespaces)
+            if trimmed.hasPrefix("### ") || trimmed.hasPrefix("> ") { continue }
+            if trimmed == "## CTAs" || trimmed == "## Sections" { continue }
+            bodyLines.append(raw)
+        }
+        let bodyParagraphs = splitParagraphs(bodyLines)
+
+        return SplashSection(
+            id: block.id,
+            heading: heading,
+            subtitle: subtitle,
+            bodyParagraphs: bodyParagraphs,
+            imagePosition: .left,
+            isHero: false,
+            visual: .empty(of: .photo),
+            transition: nil,
+            visualAlternates: nil
+        )
+    }
+
+    private func parseCTA(_ block: Block) throws -> SplashCTA {
+        let name = block.lines
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .first(where: { $0.hasPrefix("### ") })
+            .map { String($0.dropFirst(4)).trimmingCharacters(in: .whitespacesAndNewlines) } ?? "CTA"
+
+        var heading = ""
+        var href = ""
+        var subtitleLines: [String] = []
+
+        for raw in block.lines {
+            let trimmed = raw.trimmingCharacters(in: .whitespaces)
+            if trimmed.isEmpty || trimmed.hasPrefix("### ") { continue }
+            if heading.isEmpty, let (linkHeading, linkHref) = parseMarkdownLink(trimmed) {
+                heading = linkHeading
+                href = linkHref
+                continue
+            }
+            subtitleLines.append(raw)
+        }
+
+        guard !heading.isEmpty, !href.isEmpty else {
+            throw ParseError.missingCTALink(id: block.id)
+        }
+
+        let subtitle = subtitleLines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+        return SplashCTA(id: block.id, name: name, heading: heading, subtitle: subtitle, href: href)
+    }
+
+    private func splitParagraphs(_ lines: [String]) -> [String] {
+        var paragraphs: [String] = []
+        var buffer: [String] = []
+
+        func flush() {
+            let paragraph = buffer.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+            if !paragraph.isEmpty {
+                paragraphs.append(paragraph)
+            }
+            buffer.removeAll(keepingCapacity: true)
+        }
+
+        for line in lines {
+            if line.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                flush()
+            } else {
+                buffer.append(line)
+            }
+        }
+        flush()
+        return paragraphs
+    }
+
+    private func parseMarkdownLink(_ line: String) -> (String, String)? {
+        guard line.first == "[",
+              let labelClose = line.firstIndex(of: "]"),
+              line[labelClose...].hasPrefix("]("),
+              let urlClose = line.lastIndex(of: ")"),
+              urlClose > labelClose
+        else { return nil }
+
+        let labelStart = line.index(after: line.startIndex)
+        let label = String(line[labelStart..<labelClose]).trimmingCharacters(in: .whitespacesAndNewlines)
+        let urlStart = line.index(labelClose, offsetBy: 2)
+        let url = String(line[urlStart..<urlClose]).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !label.isEmpty, !url.isEmpty else { return nil }
+        return (label, url)
+    }
+
+    private func slugify(_ text: String) -> String {
+        let lowered = text.lowercased()
+        let replaced = lowered.replacingOccurrences(of: "[^a-z0-9]+", with: "-", options: .regularExpression)
+        return replaced.trimmingCharacters(in: CharacterSet(charactersIn: "-"))
+    }
+
+    private func captureReadableBlocks(in markdown: String) throws -> [Block] {
+        let lines = markdown.replacingOccurrences(of: "\r\n", with: "\n").components(separatedBy: "\n")
+        var blocks: [Block] = []
+        var currentKind: Block.Kind?
+        var currentID = ""
+        var currentLines: [String] = []
+
+        func flushCurrent() {
+            guard let kind = currentKind else { return }
+            blocks.append(Block(kind: kind, id: currentID, lines: currentLines))
+            currentKind = nil
+            currentID = ""
+            currentLines.removeAll(keepingCapacity: true)
+        }
+
+        for (idx, rawLine) in lines.enumerated() {
+            let line = rawLine.trimmingCharacters(in: .whitespaces)
+            if line == "## Sections" || line == "## CTAs" {
+                flushCurrent()
+                continue
+            }
+            if line.hasPrefix("## Section:") || line.hasPrefix("## CTA:") {
+                flushCurrent()
+                let marker = line.hasPrefix("## Section:") ? "## Section:" : "## CTA:"
+                let id = line.replacingOccurrences(of: marker, with: "").trimmingCharacters(in: .whitespaces)
+                guard !id.isEmpty else {
+                    throw ParseError.malformedSectionMarker(line: idx + 1)
+                }
+                currentKind = marker == "## Section:" ? .section : .cta
+                currentID = id
+                continue
+            }
+            if currentKind != nil {
+                currentLines.append(rawLine)
+            }
+        }
+        flushCurrent()
+
+        return blocks
+    }
+
+    private func usesLegacyFencedJSON(_ markdown: String) -> Bool {
+        markdown.contains("```subtext-section") || markdown.contains("```subtext-cta")
+    }
+
+    private func parseLegacyFencedJSON(_ markdown: String) throws -> SplashContent {
+        let sectionBlocks = captureBlocks(tag: "subtext-section", in: markdown)
+        guard !sectionBlocks.isEmpty else {
+            throw ParseError.missingSectionBlocks
+        }
+
+        var sections: [SplashSection] = []
+        for (index, block) in sectionBlocks.enumerated() {
+            guard let data = block.data(using: .utf8),
+                  let section = try? decoder.decode(SplashSection.self, from: data)
+            else {
+                throw ParseError.malformedLegacySectionJSON(index: index)
+            }
+            sections.append(section)
+        }
+
+        let ctaBlocks = captureBlocks(tag: "subtext-cta", in: markdown)
+        var ctas: [SplashCTA] = []
+        for (index, block) in ctaBlocks.enumerated() {
+            guard let data = block.data(using: .utf8),
+                  let cta = try? decoder.decode(SplashCTA.self, from: data)
+            else {
+                throw ParseError.malformedLegacyCTAJSON(index: index)
+            }
+            ctas.append(cta)
+        }
+
+        return SplashContent(sections: sections, ctas: ctas)
+    }
+
+    private func captureBlocks(tag: String, in markdown: String) -> [String] {
+        let pattern = "```\(NSRegularExpression.escapedPattern(for: tag))\\n([\\s\\S]*?)\\n```"
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return [] }
+        let range = NSRange(markdown.startIndex..<markdown.endIndex, in: markdown)
+        return regex.matches(in: markdown, range: range).compactMap { match in
+            guard match.numberOfRanges > 1,
+                  let blockRange = Range(match.range(at: 1), in: markdown)
+            else { return nil }
+            return String(markdown[blockRange]).trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+    }
 }

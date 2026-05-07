@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 struct SectionEditorPanel: View {
@@ -60,19 +61,22 @@ struct SectionEditorPanel: View {
         }
 
         FieldRow("Subtitle") {
-            TextField("Optional subtitle", text: Binding(
-                get: { section.subtitle ?? "" },
-                set: { section.subtitle = $0.isEmpty ? nil : $0 }
-            ))
-            .textFieldStyle(.roundedBorder)
+            HomeMarkdownFieldSection(
+                text: Binding(
+                    get: { section.subtitle ?? "" },
+                    set: { section.subtitle = $0.isEmpty ? nil : $0 }
+                ),
+                minHeight: 120
+            )
         }
 
-        FieldRow("Body paragraphs") {
-            StringListEditor(
-                items: $section.bodyParagraphs,
-                placeholder: "Paragraph text",
-                addLabel: "Add paragraph",
-                multiline: true
+        FieldRow("Body Markdown") {
+            HomeMarkdownFieldSection(
+                text: Binding(
+                    get: { joinMarkdownParagraphsSection(section.bodyParagraphs) },
+                    set: { section.bodyParagraphs = splitMarkdownParagraphsSection($0) }
+                ),
+                minHeight: 220
             )
         }
 
@@ -121,6 +125,58 @@ struct SectionEditorPanel: View {
             set: { section.visual = $0 }
         )
     }
+}
+
+private struct HomeMarkdownFieldSection: View {
+    @Binding var text: String
+    var minHeight: CGFloat = 140
+
+    @State private var selection: NSRange = NSRange(location: 0, length: 0)
+    @State private var contentHeight: CGFloat = 140
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            MarkdownInsertToolbar(text: $text, selection: $selection)
+            MarkdownSourceEditor(
+                text: $text,
+                selection: $selection,
+                font: NSFont.systemFont(ofSize: NSFont.systemFontSize),
+                contentHeight: $contentHeight
+            )
+            .frame(height: max(minHeight, contentHeight))
+            .clipShape(RoundedRectangle(cornerRadius: SubtextUI.Radius.medium, style: .continuous))
+        }
+    }
+}
+
+private func joinMarkdownParagraphsSection(_ paragraphs: [String]) -> String {
+    paragraphs.joined(separator: "\n\n")
+}
+
+private func splitMarkdownParagraphsSection(_ markdown: String) -> [String] {
+    let normalized = markdown.replacingOccurrences(of: "\r\n", with: "\n")
+    let parts = normalized.components(separatedBy: .newlines)
+    var blocks: [String] = []
+    var buffer: [String] = []
+
+    func flushBuffer() {
+        let block = buffer.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+        if !block.isEmpty {
+            blocks.append(block)
+        }
+        buffer.removeAll(keepingCapacity: true)
+    }
+
+    for line in parts {
+        if line.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            flushBuffer()
+        } else {
+            buffer.append(line)
+        }
+    }
+    flushBuffer()
+
+    return blocks
 }
 
 struct CTAEditorPanel: View {
